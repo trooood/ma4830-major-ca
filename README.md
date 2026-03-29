@@ -1,9 +1,9 @@
 hi trudy! this README is for you :>
 
-COMPILE 
+# COMPILE 
 cc -o sine_wave_generator_3 sine_wave_generator_3.c -lm
 
-RUN
+# RUN
 ./sine_wave_generator_3 (for default sine wave)
 ./sine_wave_generator_3 square (square wave)
 ./sine_wave_generator_3 tri (triangular wave)
