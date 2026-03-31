@@ -22,7 +22,7 @@ such as analog signals, digital clocks, modulation, and testing systems.
 #define MAX_VAL 0xFFFF
 #define PI 3.141592653589793
 
-unsigned int wave_buffer[STEPS];
+unsigned int wave_buffer[STEPS];  // output value
 
 // ------------------------ Waveform Functions ------------------------
 
@@ -97,7 +97,10 @@ void generateSawtooth(double amplitude, double offset) {
 }
 
 // ------------------------ Arbitrary Waveform from File ------------------------
+int arb_steps = STEPS;  // init to default number of steps
+
 void generateArbitrary(char *filename) {
+
     FILE *file = fopen(filename, "r");
     if (file == NULL) {
         printf("Error: File %s not found. Loading Sine instead.\n", filename);
@@ -110,6 +113,10 @@ void generateArbitrary(char *filename) {
         i++;
     }
     fclose(file);
+
+    arb_steps = i;
+    printf("Found %d samples from file\n", arb_steps);
+
 }
 
 // ------------------------ Main Function ------------------------
@@ -137,6 +144,17 @@ int main(int argc, char *argv[]) {
     if (valid) {
         printf("Waveform '%s' initialized in buffer.\n", type);
         int delay_us = 1000;
+
+        if (strcmp(type, "arb") == 0) {
+            int cycle_length = (strcmp(type, "arb") == 0) ? arb_steps : STEPS;
+            while (1) {
+                for (int i = 0; i < cycle_length; i++) {
+                    printf("Output: %u\n", wave_buffer[i]);
+                    usleep(delay_us);
+                }
+            }
+        }
+
         while (1) {
             for (int i = 0; i < STEPS; i++) {
                 printf("Output: %u\n", wave_buffer[i]);
