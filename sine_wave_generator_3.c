@@ -18,6 +18,10 @@ such as analog signals, digital clocks, modulation, and testing systems.
 #include <string.h>
 #include <unistd.h>
 
+//#include <termios.h>  // to listen to terminal
+//#include <unistd.h>
+//#include <fcntl.h>
+
 #define STEPS 100
 #define MAX_VAL 0xFFFF
 #define PI 3.141592653589793
