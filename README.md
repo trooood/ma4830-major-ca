@@ -15,3 +15,5 @@ I have done Function 1 and 2 of our assignment thoroughly but have not answered 
 You can continue from Function 3 onwards (wait for keyboard input)
 
 i will also focus on being able to specify which file to read the arb waveform from
+
+the important value to be sent to the oscilloscope is **wave_buffer[i]**
