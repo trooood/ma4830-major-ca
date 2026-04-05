@@ -1,0 +1,12 @@
+// input settings
+waveform_type = sine
+frequency = 440.00
+amplitude = 1.00
+offset = 0.00
+arbitrary_file = wave.txt
+
+// output settings
+output_mode = terminal
+sample_rate = 48000
+duration = 0
+output_file = output.txt
