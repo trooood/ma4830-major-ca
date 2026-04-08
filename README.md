@@ -17,3 +17,7 @@ You can continue from Function 3 onwards (wait for keyboard input)
 i will also focus on being able to specify which file to read the arb waveform from
 
 the important value to be sent to the oscilloscope is **wave_buffer[i]**
+
+### update about updating line
+see example code CLK_signal.c
+to prevent the output from flooding the terminal while the wave is generated
