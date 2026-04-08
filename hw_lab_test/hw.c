@@ -58,7 +58,7 @@ void generate_sine_wave(unsigned int *buffer, int samples) {
 
     delta = (float)((2.0 * PI) / (float)samples);
     for (i = 0; i < samples; i++) {
-        val = (float)((sin((double)i * delta) + 1.0) * 0x8000);
+        val = (float)((sin((double)i * delta) + 1.0) * 0x7FFF);
         buffer[i] = (unsigned int)val;
     }
 }
