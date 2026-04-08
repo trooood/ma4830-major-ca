@@ -22,7 +22,7 @@ such as analog signals, digital clocks, modulation, and testing systems.
 //#include <unistd.h>
 //#include <fcntl.h>
 
-#define STEPS 100
+#define STEPS 100  // period
 #define MAX_VAL 0xFFFF
 #define PI 3.141592653589793
 
@@ -126,7 +126,7 @@ void generateArbitrary(char *filename) {
 // ------------------------ Main Function ------------------------
 int main(int argc, char *argv[]) {
     char *type = (argc > 1) ? argv[1] : "sine";
-
+    
     double amplitude = (argc > 2) ? atof(argv[2]) : 1.0; // default full scale
     double offset    = (argc > 3) ? atof(argv[3]) : 0.0; // default mid
 
@@ -137,8 +137,16 @@ int main(int argc, char *argv[]) {
     else if (strcmp(type, "tri") == 0) generateTriangular(amplitude, offset);
     else if (strcmp(type, "saw") == 0) generateSawtooth(amplitude, offset);
     else if (strcmp(type, "arb") == 0) {
-        char *file = (argc > 4) ? argv[4] : "wave.txt";
-        generateArbitrary(file);
+        char *file = "wave.txt";  // default filename
+
+    for (int i = 1; i < argc; i++) {
+        if (strstr(argv[i], ".txt") != NULL) {
+            file = argv[i];
+            break;
+        }
+    }
+    generateArbitrary(file);
+
     }
     else {
         printf("Error: Unknown waveform '%s'. Program will exit.\n", type);
