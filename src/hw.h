@@ -1,7 +1,12 @@
 #ifndef HW_H
 #define HW_H
+
+#ifdef __QNX__
 #include <hw/pci.h>
 #include <sys/neutrino.h>
+#else
+#include <stdint.h> /* For uintptr_t on Windows/Linux */
+#endif
 
 typedef struct {
     uintptr_t iobase[6];
