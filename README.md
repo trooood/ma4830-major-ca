@@ -6,3 +6,10 @@ main.c - multithreading everything together
 
 "Write codes as modular subroutines" (i.e. write your code as if it will be a library to #include so we have cleaner code)
 Please make your .c and .h file names short and easy to write 🙏 - Walter
+
+
+### hw_lab_test
+##### Compile and Run
+cc -o hw main.c hw.c -lm
+
+./hw
