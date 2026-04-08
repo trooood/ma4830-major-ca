@@ -149,59 +149,59 @@ int generateArbitrary(unsigned int *wave_buffer, const char *filename) {
     
     return i;
 }
-// Commented out because testing the mutex code; not to be in main right now
-// // ------------------------ Main Function ------------------------
-// int main(int argc, char *argv[]) {
-//     char *type = (argc > 1) ? argv[1] : "sine";
+
+// ------------------------ Main Function ------------------------
+int main(int argc, char *argv[]) {
+    char *type = (argc > 1) ? argv[1] : "sine";
     
-//     double amplitude = (argc > 2) ? atof(argv[2]) : 1.0; // default full scale
-//     double offset    = (argc > 3) ? atof(argv[3]) : 0.0; // default mid
+    double amplitude = (argc > 2) ? atof(argv[2]) : 1.0; // default full scale
+    double offset    = (argc > 3) ? atof(argv[3]) : 0.0; // default mid
 
-//     int valid = 1;
+    int valid = 1;
 
-//     if (strcmp(type, "sine") == 0) generateSine(wave_buffer, amplitude, offset);
-//     else if (strcmp(type, "square") == 0) generateSquare(wave_buffer, amplitude, offset);
-//     else if (strcmp(type, "tri") == 0) generateTriangular(wave_buffer, amplitude, offset);
-//     else if (strcmp(type, "saw") == 0) generateSawtooth(wave_buffer, amplitude, offset);
-//     else if (strcmp(type, "arb") == 0) {
-//         char *file = "wave.txt";  // default filename
+    if (strcmp(type, "sine") == 0) generateSine(wave_buffer, amplitude, offset);
+    else if (strcmp(type, "square") == 0) generateSquare(wave_buffer, amplitude, offset);
+    else if (strcmp(type, "tri") == 0) generateTriangular(wave_buffer, amplitude, offset);
+    else if (strcmp(type, "saw") == 0) generateSawtooth(wave_buffer, amplitude, offset);
+    else if (strcmp(type, "arb") == 0) {
+        char *file = "wave.txt";  // default filename
 
-//         for (int i = 1; i < argc; i++) {
-//             if (strstr(argv[i], ".txt") != NULL) {
-//                 file = argv[i];
-//                 break;
-//             }
-//         }
-//     generateArbitrary(wave_buffer, file);
+        for (int i = 1; i < argc; i++) {
+            if (strstr(argv[i], ".txt") != NULL) {
+                file = argv[i];
+                break;
+            }
+        }
+    generateArbitrary(wave_buffer, file);
 
-//     }
-//     else {
-//         printf("Error: Unknown waveform '%s'. Program will exit.\n", type);
-//         valid = 0;
-//     }
+    }
+    else {
+        printf("Error: Unknown waveform '%s'. Program will exit.\n", type);
+        valid = 0;
+    }
 
-//     if (valid) {
-//         printf("Waveform '%s' initialized in buffer.\n", type);
-//         int delay_us = 1000;
+    if (valid) {
+        printf("Waveform '%s' initialized in buffer.\n", type);
+        int delay_us = 1000;
 
-//         if (strcmp(type, "arb") == 0) {
-//             int cycle_length = (strcmp(type, "arb") == 0) ? arb_steps : STEPS;
-//             while (1) {
-//                 for (int i = 0; i < cycle_length; i++) {
-//                     printf("Output: %u\n", wave_buffer[i]);
-//                     usleep(delay_us);
-//                 }
-//             }
-//         }
+        if (strcmp(type, "arb") == 0) {
+            int cycle_length = (strcmp(type, "arb") == 0) ? arb_steps : STEPS;
+            while (1) {
+                for (int i = 0; i < cycle_length; i++) {
+                    printf("Output: %u\n", wave_buffer[i]);
+                    usleep(delay_us);
+                }
+            }
+        }
 
-//         while (1) {
-//             for (int i = 0; i < STEPS; i++) {
-//                 printf("Output: %u\n", wave_buffer[i]);
-//                 usleep(delay_us);
-//             }
-//         }
-//     }
+        while (1) {
+            for (int i = 0; i < STEPS; i++) {
+                printf("Output: %u\n", wave_buffer[i]);
+                usleep(delay_us);
+            }
+        }
+    }
 
-//     return 0;
-// }
+    return 0;
+}
 
