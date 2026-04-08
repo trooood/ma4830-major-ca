@@ -1,0 +1,951 @@
+### DAQ_PCInE.c
+// 23 Sept 2021 : Dual PCIe/PCI Version
+//*********************************************************************
+// Performs basic I/O for the Measurement Computing
+// 		- PCIe-DAS1602 & PCI-DAS1602/16
+//
+// Routine to program basic functions at Register level
+// Demonstrated the most basic DIO and ADC and DAC functions
+// - excludes FIFO and strobed operations 
+// 
+// This board is port mapped: 
+// 		PCIe : info.VendorId=0x1307; info.DeviceId = 0x01;
+//		PCIe : info.VendorId=0x1307; info.DeviceId = 0x115;
+//
+// G.Seet - 	20 June 2021 - Created for PCIe board
+//
+// 21 Sept 2021 - Combined PCI/PCIe codes - Define PCIe => 1 if PCIe board 
+//
+//*********************************************************************
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <hw/pci.h>
+#include <hw/inout.h>
+#include <sys/neutrino.h>
+#include <sys/mman.h>
+
+#define PCIe		0		// 0: PCI 1: PCIe 
+#define PCI 		!PCIe
+
+// ********************************************************************
+// PCIe Registers *****************************************************
+
+#if PCIe				// define registers for PCIe board
+#define 	INTERRUPT	iobase[1] + 4	// Badr1 + 4 - PCIe 32-bit
+
+#define 	ADC_Data	iobase[2] + 0	// Badr2 + 0 - PCIe 16-bit w->srt
+#define 	DAC0_Data	iobase[2] + 2	// Badr2 + 2 - PCIe 12-bit
+#define 	DAC1_Data	iobase[2] + 4	// Badr2 + 4 - PCIe 12-bit
+	
+#define 	MUXCHAN		iobase[3] + 0	// Badr3 + 0 - Mux scan/upper lower
+#define 	DIO_Data	iobase[3] + 1	// Badr3 + 1 - 8bit DI3 DI2 DI1 DI0
+#define	ADC_Stat1		iobase[3] + 2 	// Badr3 + 2 - 1 : MSB
+#define 	ADC_Stat2	iobase[3] + 3	// Badr3 + 3 - Alt EOC
+#define	CLK_Pace		iobase[3] + 5	// Badr3 + 5 - S/W Pacer : XXXX XX0X
+#define 	ADC_Enable	iobase[3] + 6	// Badr3 + 6 - Brst_off Conv_EN:0x01
+#define 	ADC_Gain	iobase[3] + 7	// Badr3 + 7 - unipolar 5V : 0x01
+#else 
+
+// ********************************************************************
+// PCI Registers - define registers for PCI board *********************
+
+#define INTERRUPT	iobase[1] + 0	// Badr1 + 0 : also ADC register
+#define	MUXCHAN		iobase[1] + 2	// Badr1 + 2
+#define	TRIGGER		iobase[1] + 4	// Badr1 + 4
+#define	AUTOCAL		iobase[1] + 6	// Badr1 + 6
+#define DA_CTLREG	iobase[1] + 8	// Badr1 + 8
+
+#define	AD_DATA		iobase[2] + 0	// Badr2 + 0
+#define AD_FIFOCLR	iobase[2] + 2	// Badr2 + 2
+
+#define	DIO_PORTA	iobase[3] + 4	// Badr3 + 4
+#define	DIO_PORTB	iobase[3] + 5	// Badr3 + 5
+#define	DIO_PORTC	iobase[3] + 6	// Badr3 + 6
+#define	DIO_CTLREG	iobase[3] + 7	// Badr3 + 7
+
+#define DA_Data		iobase[4] + 0	// Badr4 + 0
+#define DA_FIFOCLR	iobase[4] + 2	// Badr4 + 2
+#endif
+
+#define	DEBUG		1
+
+int badr[5];		// PCI 2.2 assigns 6 IO base addresses
+
+int main() {
+
+struct pci_dev_info info;
+void *hdl;
+
+uintptr_t iobase[6],dio_in;
+uint16_t adc_in[2];
+	
+unsigned int i,j,count,read_data;
+unsigned int stat,stat1,stat2, stat3;
+unsigned short chan;
+
+printf("\fDemonstration Routine for PCI-DAS 1602\n\n");
+
+memset(&info,0,sizeof(info));
+if(pci_attach(0)<0) {
+  perror("pci_attach");
+  exit(EXIT_FAILURE);
+  }
+			
+if(PCIe) {
+	info.VendorId=0x1307;	// Vendor and Device ID 
+	info.DeviceId=0x115;	 
+	}
+
+if(PCI)	{
+	info.VendorId=0x1307;
+	info.DeviceId=0x01;
+	}
+
+if ((hdl=pci_attach_device(0, PCI_SHARE|PCI_INIT_ALL, 0, &info))==0) {
+  perror("pci_attach_device");
+  exit(EXIT_FAILURE);
+  }
+  
+for(i=0;i<6;i++) {// Another printf BUG ? - Break printf to two statements
+    if(info.BaseAddressSize[i]>0) {
+      printf("Aperture %d  Base 0x%x Length %d Type %s\n", i, 
+        PCI_IS_MEM(info.CpuBaseAddress[i]) ?  (int)PCI_MEM_ADDR(info.CpuBaseAddress[i]) : 
+        (int)PCI_IO_ADDR(info.CpuBaseAddress[i]),info.BaseAddressSize[i], 
+        PCI_IS_MEM(info.CpuBaseAddress[i]) ? "MEM" : "IO");
+      }
+  }  
+    														
+printf("IRQ %d\n",info.Irq); 		
+
+			// Assign BADRn IO addresses for PCIe-DAS1602			
+if(DEBUG) {
+printf("\nDAS 1602 Base addresses:\n\n");
+for(i=0;i<5;i++) {
+  badr[i]=PCI_IO_ADDR(info.CpuBaseAddress[i]);
+  if(DEBUG) printf("Badr[%d] : %x\n", i, badr[i]);
+  }
+ 
+printf("\nReconfirm Iobase:\n");// map I/O base address to user space						
+
+for(i=0;i<5;i++) {	// expect CpuBaseAddress to be the same as iobase for PC
+  iobase[i]=mmap_device_io(0x0f,badr[i]);	
+  printf("Index %d : Address : %x ", i,badr[i]);
+  printf("IOBASE  : %x \n",iobase[i]);
+  }										
+}
+			// Modify thread control privity
+if(ThreadCtl(_NTO_TCTL_IO,0)==-1) {
+  perror("Thread Control");
+  exit(1);
+  }																											
+
+printf("\nWaiting for DIO start\n");
+getchar();
+
+//******************************************************************************
+// Digital Port Functions - There are primary & secondary ports 
+//			    A/B/C and 4 bits of primary port
+// 
+// out8(DIO_CTLREG,0x90);   Port A:In; Port B:Out, Port C(upper|lower):Out|Out	
+//
+// No need to configure the basic 4 bit I/O 
+// Secondary port needs to be configured like in notes for PCI board
+//******************************************************************************																																	
+
+printf("\nDIO Functions\n"); 
+
+#if PCI
+out8(DIO_CTLREG,0x90);	// Port A : Input,  Port B : Output,  Port C (upper | lower) : Output | Output			
+
+for (i=0;i<16;i++) {		// write out 
+  out8(DIO_PORTB,(i & 0x0f));	// Light up LED lowe 4 bits
+  printf("Light up LED %2x\n", (i & 0x0f));
+  delay(500);			// Pause 500 ms
+  }
+#endif
+
+printf("\nRead Toggle Swtich\n");	
+	
+#if PCIe
+for (i=0;i<16;i++) {		// write out 
+  read_data= in8(DIO_Data);	// read switch
+  printf("Data Read : %2x\n", read_data);
+  out8(DIO_Data, read_data);	// Light up LED lower 4 bits
+  delay(500);			// Pause 2 seconds
+  }
+
+
+#endif
+
+#if PCI
+for (i=0;i<16;i++) {		// write out 
+  read_data= in8(DIO_PORTA);	// read switch
+  printf("Data Read : %2x\n", read_data & 0x0f);
+  out8(DIO_PORTB, read_data);	// Light up LED lower 4 bits
+  delay(500);			// Pause 2 seconds
+  }
+#endif
+
+printf("\nWaiting for DAC start\n");
+getchar();
+
+//******************************************************************************
+// D/A Port Functions
+// Set to 5V, Unipolar 16 bit offset map. 0V->0x0000 mid >0x7fff 5V->0xffff
+// PCIe : 12 bit, PCI : 16 bit
+//******************************************************************************
+	
+printf("\nWrite Multiple DAC to Scope\n");
+printf("Connect Your Scope \n");
+																																					
+#if PCIe
+	for (j = 0; j < 0x0f; j++) {
+	  for (i = 0x000; i < 0xfff; i++) {
+	    out16(DAC0_Data, (i & 0x0fff));
+	    out16(DAC1_Data, ((i>0x800)? 0 : 0x0fff));				
+	    }
+    }
+#endif
+
+#if PCI
+for (j = 0; j<0x0f;j++) {
+  for(i=0; i<0xffff; i++) {
+    out16(DA_CTLREG,0x0a23);	// DA Enable, #0,#1,SW 5V unipolar		
+    out16(DA_FIFOCLR,0);	// Clear DA FIFO buffer 16 bit D/A
+    out16(DA_Data,(short) i & 0xffff);	 																																	
+   	  
+    out16(DA_CTLREG,0x0a43);	// DA Enable, #1,#1,SW V unipolar		
+    out16(DA_FIFOCLR, 0);					// Clear DA FIFO  buffer
+    out16(DA_Data, (short)((i>0x8000)? 0 : 0xffff));																																		
+    }
+  }  
+#endif
+
+printf("Output to Scope Ended\n");
+printf("\nWaiting for ADC start\n");
+getchar();
+
+//******************************************************************************
+// ADC Port Functions
+//******************************************************************************
+											
+				// Initialise Board	
+printf("\nReading status of key registers\n");
+
+#if PCIe
+out8(CLK_Pace,0x00);		// set to SW pacing & verify										
+stat1=in32(INTERRUPT); 
+stat2=in8(CLK_Pace);
+printf("Interrupt Regs : %08x ADC Regs %02x\n",	stat1,stat2);
+								
+out8(ADC_Enable,0x01);		// set bursting off, conversions on
+out8(ADC_Gain,0x01);		// set range : 5V
+out8(MUXCHAN,0x10);		// set mux for single channel scan : 1
+#endif
+
+#if PCI
+out16(INTERRUPT,0x60c0);	// sets interrupts	 - Clears			
+out16(TRIGGER,0x2081);		// sets trigger control: 10MHz, clear, Burst off,SW trig. default:20a0
+out16(AUTOCAL,0x007f);		// sets automatic calibration : default
+
+out16(AD_FIFOCLR,0); 		// clear ADC buffer
+out16(MUXCHAN,0x0D00);		// Write to MUX register-SW trigger,UP, SE,5v,ch 0-0 	
+				// x x 0 0 | 1  1  0 1 | 0x 7  0 | Diff - 8 channels
+				// SW trig |Single-Uni 5v| scan 0-7| Single - 16 channels
+#endif														
+				
+#if PCIe
+for(i=0;i<0x40;i++){
+  out16(ADC_Data,0);		// Initiate Read #0
+  delay(1);
+  while(in8(ADC_Stat2) >0x80);	   			
+  adc_in[0]=in16(ADC_Data);
+ 
+  out16(ADC_Data,0);		// Initiate Read #1
+  delay(1);
+  while(in8(ADC_Stat2) >0x80);	    			
+  adc_in[1]=in16(ADC_Data);
+  
+  printf("Chan#0 : %04x Chan#1 : %04x\n",adc_in[0],adc_in[1]);
+  delay(100);
+  }
+#endif
+
+#if PCI
+for(i=0;i<0x40;i++){
+  for(count=0;count<2;count++){
+  
+    out16(AD_DATA,0); 		// start ADC 
+    while(!(in16(MUXCHAN) & 0x4000));
+  	adc_in[count]=in16(AD_DATA); 
+  	}
+  	
+  printf("Chan#0 : %04x Chan#1 : %04x\n",adc_in[0],adc_in[1]);
+  fflush( stdout );
+  delay(100);									
+  }
+#endif
+
+printf("\nDemo End\n");
+				// End of program - orderly shutdown
+
+pci_detach_device(hdl);
+return(0);
+}  
+
+
+### Source_ daq_test (1).c
+// 09September 2005
+//******************************************************************************************************
+// Performs basic I/O for the Omega PCI-DAS1602 
+//
+// Demonstration routine to demonstrate pci hardware programming
+// Demonstrated the most basic DIO and ADC and DAC functions
+// - excludes FIFO and strobed operations 
+//
+// Note : Single ADC - Disable Burst - Single write to DAC - only individual write seems to work.
+//         : Need to check & verify DAC range  output/calibration
+//
+// G.Seet - 26 August 2005
+//******************************************************************************************************
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <hw/pci.h>
+#include <hw/inout.h>
+#include <sys/neutrino.h>
+#include <sys/mman.h>
+																
+#define	INTERRUPT		iobase[1] + 0				// Badr1 + 0 : also ADC register
+#define	MUXCHAN			iobase[1] + 2				// Badr1 + 2
+#define	TRIGGER			iobase[1] + 4				// Badr1 + 4
+#define	AUTOCAL			iobase[1] + 6				// Badr1 + 6
+#define DA_CTLREG		iobase[1] + 8				// Badr1 + 8
+
+#define AD_DATA			iobase[2] + 0				// Badr2 + 0
+#define AD_FIFOCLR		iobase[2] + 2				// Badr2 + 2
+
+#define	TIMER0				iobase[3] + 0				// Badr3 + 0
+#define	TIMER1				iobase[3] + 1				// Badr3 + 1
+#define	TIMER2				iobase[3] + 2				// Badr3 + 2
+#define	COUNTCTL		iobase[3] + 3				// Badr3 + 3
+#define	DIO_PORTA		iobase[3] + 4				// Badr3 + 4
+#define	DIO_PORTB		iobase[3] + 5				// Badr3 + 5
+#define	DIO_PORTC		iobase[3] + 6				// Badr3 + 6
+#define	DIO_CTLREG		iobase[3] + 7				// Badr3 + 7
+#define	PACER1				iobase[3] + 8				// Badr3 + 8
+#define	PACER2				iobase[3] + 9				// Badr3 + 9
+#define	PACER3				iobase[3] + a				// Badr3 + a
+#define	PACERCTL			iobase[3] + b				// Badr3 + b
+
+#define DA_Data			iobase[4] + 0				// Badr4 + 0
+#define DA_FIFOCLR		iobase[4] + 2				// Badr4 + 2
+
+#define	DEBUG						1
+ 	
+int badr[5];								// PCI 2.2 assigns 6 IO base addresses
+
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+	
+int main() {
+struct pci_dev_info info;
+void *hdl;
+
+uintptr_t iobase[6];
+uintptr_t dio_in;
+uint16_t adc_in;
+	
+unsigned int i,count;
+unsigned short chan;
+
+printf("\fDemonstration Routine for PCI-DAS 1602\n\n");
+
+memset(&info,0,sizeof(info));
+if(pci_attach(0)<0) {
+  perror("pci_attach");
+  exit(EXIT_FAILURE);
+  }
+
+																		/* Vendor and Device ID */
+info.VendorId=0x1307;
+info.DeviceId=0x01;
+
+if ((hdl=pci_attach_device(0, PCI_SHARE|PCI_INIT_ALL, 0, &info))==0) {
+  perror("pci_attach_device");
+  exit(EXIT_FAILURE);
+  }
+  
+  for(i=0;i<6;i++) {							// Another printf BUG ? - Break printf to two statements
+    if(info.BaseAddressSize[i]>0) {
+      printf("Aperture %d  Base 0x%x Length %d Type %s\n", i, 
+        PCI_IS_MEM(info.CpuBaseAddress[i]) ?  (int)PCI_MEM_ADDR(info.CpuBaseAddress[i]) : 
+        (int)PCI_IO_ADDR(info.CpuBaseAddress[i]),info.BaseAddressSize[i], 
+        PCI_IS_MEM(info.CpuBaseAddress[i]) ? "MEM" : "IO");
+      }
+  }  
+    														
+printf("IRQ %d\n",info.Irq); 		
+														// Assign BADRn IO addresses for PCI-DAS1602			
+if(DEBUG) {
+printf("\nDAS 1602 Base addresses:\n\n");
+for(i=0;i<5;i++) {
+  badr[i]=PCI_IO_ADDR(info.CpuBaseAddress[i]);
+  if(DEBUG) printf("Badr[%d] : %x\n", i, badr[i]);
+  }
+ 
+	printf("\nReconfirm Iobase:\n");  			// map I/O base address to user space						
+for(i=0;i<5;i++) {								// expect CpuBaseAddress to be the same as iobase for PC
+  iobase[i]=mmap_device_io(0x0f,badr[i]);	
+  printf("Index %d : Address : %x ", i,badr[i]);
+  printf("IOBASE  : %x \n",iobase[i]);
+  }													
+}
+														// Modify thread control privity
+if(ThreadCtl(_NTO_TCTL_IO,0)==-1) {
+  perror("Thread Control");
+  exit(1);
+  }																											
+
+
+while(1)
+{
+														//*****************************************************************************
+														//Digital Port Functions
+														//*****************************************************************************																																	
+
+printf("\nDIO Functions\n");													  										
+out8(DIO_CTLREG,0x90);					// Port A : Input,  Port B : Output,  Port C (upper | lower) : Output | Output			
+
+dio_in=in8(DIO_PORTA); 					// Read Port A	
+printf("Port A : %02x\n", dio_in);																												
+																						
+out8(DIO_PORTB, dio_in);					// output Port A value -> write to Port B 		
+
+
+
+ 														//******************************************************************************
+														// ADC Port Functions
+														//******************************************************************************
+														// Initialise Board								
+out16(INTERRUPT,0x60c0);				// sets interrupts	 - Clears			
+out16(TRIGGER,0x2081);					// sets trigger control: 10MHz, clear, Burst off,SW trig. default:20a0
+out16(AUTOCAL,0x007f);					// sets automatic calibration : default
+
+out16(AD_FIFOCLR,0); 						// clear ADC buffer
+out16(MUXCHAN,0x0D00);				// Write to MUX register - SW trigger, UP, SE, 5v, ch 0-0 	
+														// x x 0 0 | 1  0  0 1  | 0x 7   0 | Diff - 8 channels
+														// SW trig |Diff-Uni 5v| scan 0-7| Single - 16 channels
+printf("\n\nRead multiple ADC\n");
+count=0x00;
+while(count <0x02) {
+  chan= ((count & 0x0f)<<4) | (0x0f & count);
+  out16(MUXCHAN,0x0D00|chan);		// Set channel	 - burst mode off.
+  delay(1);											// allow mux to settle
+  out16(AD_DATA,0); 							// start ADC 
+  while(!(in16(MUXCHAN) & 0x4000));
+  adc_in=in16(AD_DATA);   
+  printf("ADC Chan: %02x Data [%3d]: %4x \n", chan, (int)count, (unsigned int)adc_in);		// print ADC													
+  fflush( stdout );
+  count++;
+  delay(5);											// Write to MUX register - SW trigger, UP, DE, 5v, ch 0-7 	
+  }
+
+ 														//******************************************************************************
+														//D/A Port Functions
+														//******************************************************************************
+	
+printf("\n\nRead multiple DAC\n");																						
+for(i=0x8fff;i<0xffff;i=i+0x80) {
+	out16(DA_CTLREG,0x0a23);			// DA Enable, #0, #1, SW 5V unipolar		2/6
+   	out16(DA_FIFOCLR, 0);					// Clear DA FIFO  buffer
+   	out16(DA_Data,(short) i);																																		
+   	out16(DA_CTLREG,0x0a43);			// DA Enable, #1, #1, SW 5V unipolar		2/6
+  	out16(DA_FIFOCLR, 0);					// Clear DA FIFO  buffer
+	out16(DA_Data,(short) i);																																		
+
+  	printf("DAC Data [%4x]: %4x\r", i, i);		// print DAC													
+  	fflush( stdout ); 
+  	delay(2);
+  	}
+  	 
+														// Reset DAC to 5v
+out16(DA_CTLREG,(short)0x0a23);	
+out16(DA_FIFOCLR,(short) 0);			
+out16(DA_Data, 0x8fff);						// Mid range - Unipolar																											
+  
+out16(DA_CTLREG,(short)0x0a43);	
+out16(DA_FIFOCLR,(short) 0);			
+out16(DA_Data, 0x8fff);		
+																												
+printf("\n\nExit Demo Program\n");
+
+//*****************************************************************************************************************
+
+//pci_detach_device(hdl);
+
+//return(0);
+}
+
+}
+
+### Source_ sine.c
+// 09September 2005
+//******************************************************************************************************
+// Performs basic I/O for the Omega PCI-DAS1602 
+//
+// Demonstration routine to demonstrate pci hardware programming
+// Demonstrated the most basic DIO and ADC and DAC functions
+// - excludes FIFO and strobed operations 
+//
+// Note :
+//
+//			22 Sept 2016 : Restructured to demonstrate Sine wave to DA
+//
+// G.Seet - 26 August 2005
+//******************************************************************************************************
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <hw/pci.h>
+#include <hw/inout.h>
+#include <sys/neutrino.h>
+#include <sys/mman.h>
+#include <math.h>
+																
+#define	INTERRUPT		iobase[1] + 0				// Badr1 + 0 : also ADC register
+#define	MUXCHAN			iobase[1] + 2				// Badr1 + 2
+#define	TRIGGER			iobase[1] + 4				// Badr1 + 4
+#define	AUTOCAL			iobase[1] + 6				// Badr1 + 6
+#define 	DA_CTLREG		iobase[1] + 8				// Badr1 + 8
+
+#define	 AD_DATA			iobase[2] + 0				// Badr2 + 0
+#define	 AD_FIFOCLR		iobase[2] + 2				// Badr2 + 2
+
+#define	TIMER0				iobase[3] + 0				// Badr3 + 0
+#define	TIMER1				iobase[3] + 1				// Badr3 + 1
+#define	TIMER2				iobase[3] + 2				// Badr3 + 2
+#define	COUNTCTL			iobase[3] + 3				// Badr3 + 3
+#define	DIO_PORTA		iobase[3] + 4				// Badr3 + 4
+#define	DIO_PORTB		iobase[3] + 5				// Badr3 + 5
+#define	DIO_PORTC		iobase[3] + 6				// Badr3 + 6
+#define	DIO_CTLREG		iobase[3] + 7				// Badr3 + 7
+#define	PACER1				iobase[3] + 8				// Badr3 + 8
+#define	PACER2				iobase[3] + 9				// Badr3 + 9
+#define	PACER3				iobase[3] + a				// Badr3 + a
+#define	PACERCTL			iobase[3] + b				// Badr3 + b
+
+#define 	DA_Data			iobase[4] + 0				// Badr4 + 0
+#define	DA_FIFOCLR		iobase[4] + 2				// Badr4 + 2
+	
+int badr[5];															// PCI 2.2 assigns 6 IO base addresses
+
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+	
+int main() {
+struct pci_dev_info info;
+void *hdl;
+
+uintptr_t iobase[6];
+uintptr_t dio_in;
+uint16_t adc_in;
+	
+unsigned int i,count;
+unsigned short chan;
+
+unsigned int data[100];
+float delta,dummy;
+
+printf("\fDemonstration Routine for PCI-DAS 1602\n\n");
+
+memset(&info,0,sizeof(info));
+if(pci_attach(0)<0) {
+  perror("pci_attach");
+  exit(EXIT_FAILURE);
+  }
+
+																		/* Vendor and Device ID */
+info.VendorId=0x1307;
+info.DeviceId=0x01;
+
+if ((hdl=pci_attach_device(0, PCI_SHARE|PCI_INIT_ALL, 0, &info))==0) {
+  perror("pci_attach_device");
+  exit(EXIT_FAILURE);
+  }
+  																		// Determine assigned BADRn IO addresses for PCI-DAS1602			
+
+printf("\nDAS 1602 Base addresses:\n\n");
+for(i=0;i<5;i++) {
+  badr[i]=PCI_IO_ADDR(info.CpuBaseAddress[i]);
+  printf("Badr[%d] : %x\n", i, badr[i]);
+  }
+ 
+printf("\nReconfirm Iobase:\n");  						// map I/O base address to user space						
+for(i=0;i<5;i++) {												// expect CpuBaseAddress to be the same as iobase for PC
+  iobase[i]=mmap_device_io(0x0f,badr[i]);	
+  printf("Index %d : Address : %x ", i,badr[i]);
+  printf("IOBASE  : %x \n",iobase[i]);
+  }													
+																		// Modify thread control privity
+if(ThreadCtl(_NTO_TCTL_IO,0)==-1) {
+  perror("Thread Control");
+  exit(1);
+  }																											
+   		
+//**********************************************************************************************
+// Setup waveform array
+//**********************************************************************************************
+																
+
+delta=(2.0*3.142)/50.0;					// increment
+for(i=0;i<50;i++) {
+  dummy= ((sinf((float)(i*delta))) + 1.0) * 0x8000 ;
+  data[i]= (unsigned) dummy;			// add offset +  scale
+ }
+
+//*********************************************************************************************
+// Output wave
+//*********************************************************************************************
+
+while(1) {
+for(i=0;i<50;i++) {
+	out16(DA_CTLREG,0x0a23);			// DA Enable, #0, #1, SW 5V unipolar		2/6
+   	out16(DA_FIFOCLR, 0);					// Clear DA FIFO  buffer
+   	out16(DA_Data,(short) data[i]);																																		
+   	out16(DA_CTLREG,0x0a43);			// DA Enable, #1, #1, SW 5V unipolar		2/6
+  	out16(DA_FIFOCLR, 0);					// Clear DA FIFO  buffer
+	out16(DA_Data,(short) data[i]);																																		
+  	}
+}
+  	
+//**********************************************************************************************
+// Reset DAC to default : 5v
+//**********************************************************************************************
+
+out16(DA_CTLREG,(short)0x0a23);	
+out16(DA_FIFOCLR,(short) 0);			
+out16(DA_Data, 0x8fff);						// Mid range - Unipolar																											
+  
+out16(DA_CTLREG,(short)0x0a43);	
+out16(DA_FIFOCLR,(short) 0);			
+out16(DA_Data, 0x8fff);				
+																																						
+printf("\n\nExit Demo Program\n");
+pci_detach_device(hdl);
+
+//**********************************************************************************************
+
+return(0);
+}
+
+
+### pt_args.c
+//**************************************************************
+//	Program : pt_args.c 
+//	Demonstrates a safe way to pass arguments to threads 
+//	during thread creation.  In this case, a structure is 
+// 	used to pass multiple arguments.
+//
+// 	2 October 20 : G.Seet
+// 	QNX 6.xx version - QNX example
+//****************************************************************/*****************************************************************************
+
+
+#include <pthread.h>
+#include <stdio.h>
+#include <stdlib.h>
+#define NUM_THREADS	8
+
+char *messages[NUM_THREADS];
+
+struct thread_data
+{
+   int	thread_id;
+   int  sum;
+   char *message;
+};
+
+struct thread_data thread_data_array[NUM_THREADS];
+
+void *PrintHello(void *threadarg)
+{
+   int taskid, sum;
+   char *hello_msg;
+   struct thread_data *my_data;
+
+   sleep(1);
+   my_data = (struct thread_data *) threadarg;
+   taskid = my_data->thread_id;
+   sum = my_data->sum;
+   hello_msg = my_data->message;
+   printf("Thread %d: %s  Sum=%d\n", taskid, hello_msg, sum);
+   pthread_exit(NULL);
+}
+
+int main(int argc, char *argv[])
+{
+pthread_t threads[NUM_THREADS];
+int *taskids[NUM_THREADS];
+int rc, t, sum;
+
+sum=0;
+messages[0] = "English: Hello World!";
+messages[1] = "French: Bonjour, le monde!";
+messages[2] = "Spanish: Hola al mundo";
+messages[3] = "Klingon: Nuq neH!";
+messages[4] = "German: Guten Tag, Welt!"; 
+messages[5] = "Russian: Zdravstvytye, mir!";
+messages[6] = "Japan: Sekai e konnichiwa!";
+messages[7] = "Latin: Orbis, te saluto!";
+
+for(t=0;t<NUM_THREADS;t++) {
+  sum = sum + t;
+  thread_data_array[t].thread_id = t;
+  thread_data_array[t].sum = sum;
+  thread_data_array[t].message = messages[t];
+  printf("Creating thread %d\n", t);
+  rc = pthread_create(&threads[t], NULL, PrintHello, (void *) 
+       &thread_data_array[t]);
+  if (rc) {
+    printf("ERROR; return code from pthread_create() is %d\n", rc);
+    exit(-1);
+    }
+  }
+pthread_exit(NULL);
+}
+
+### pt_convar.c
+//**************************************************************
+//	Program : pt_convar.c 
+//	Demonstrates the usage of pthread conditional variables
+//
+// 	2 October 20 : G.Seet
+// 	QNX 6.xx version - QNX example
+//****************************************************************
+
+#include <stdio.h>
+#include <pthread.h>
+
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
+int condition = 0;
+int count = 0;
+
+int consume( void )
+{
+   while( 1 )
+   {
+      pthread_mutex_lock( &mutex );
+      while( condition == 0 )
+         pthread_cond_wait( &cond, &mutex );
+      printf( "Consumed %d\n", count );
+      condition = 0;
+      pthread_cond_signal( &cond );      
+      pthread_mutex_unlock( &mutex );
+   }
+
+   return( 0 );
+}
+
+void*  produce( void * arg )
+{
+   while( 1 )
+   {
+      pthread_mutex_lock( &mutex );
+      while( condition == 1 )
+         pthread_cond_wait( &cond, &mutex );
+      printf( "Produced %d\n", count++ );
+      condition = 1;
+      pthread_cond_signal( &cond );      
+      pthread_mutex_unlock( &mutex );
+   }
+   return( 0 );
+}
+
+int main( void )
+{
+   pthread_create( NULL, NULL, &produce, NULL );
+   return consume();
+}
+
+### pt_create.c
+//**************************************************************************
+//	Program : pt_create.c
+//	Demonstrates simple thread process.
+// 	Threads drop out of the procedure when done. Threads have access to 
+// 	current process's code and data.
+//
+//	Revised for QNX6.3 : 4 November 2010
+//
+//**************************************************************************
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <pthread.h>
+#include <process.h>
+
+int main(int,char *[]);
+int global;
+
+void * thread(void *arg)
+ {
+for(;;)
+ {
+  printf("Thread process : %d\n",global++);
+  sleep(2);
+  }
+}
+
+int main(int argc,char *argv[])
+ {
+pthread_attr_t attr;
+
+
+
+printf("Starting a thread from main\n");
+sleep(1);
+
+pthread_create( NULL, NULL, &thread, NULL );
+for(;;)
+ {
+  printf("Main process   : %d\n",global++);
+  sleep(1);
+  }
+return(EXIT_SUCCESS);
+}
+
+
+
+### pt_join.c
+//**************************************************************
+//	Program : pt_join.c 
+//	Demonstrates how to "wait" for thread completions by using
+//   	the Pthread join routine.  Threads are explicitly created in a joinable
+//	state for portability reasons. 
+//	Use of the pthread_exit status argument is also shown. 
+//
+// 	2 October 20 : G.Seet
+// 	QNX 6.xx version - QNX example
+//****************************************************************/*****************************************************************************
+
+
+#include <pthread.h>
+#include <stdio.h>
+#include <stdlib.h>
+#define NUM_THREADS	4
+
+void *BusyWork(void *t)
+{
+   int i;
+   long tid;
+   double result=0.0;
+   tid = (long)t;
+   printf("Thread %ld starting...\n",tid);
+   for (i=0; i<1000000; i++)
+   {
+      result = result + sin(i) * tan(i);
+   }
+   printf("Thread %ld done. Result = %e\n",tid, result);
+   pthread_exit((void*) t);
+}
+
+int main (int argc, char *argv[])
+{
+   pthread_t thread[NUM_THREADS];
+   pthread_attr_t attr;
+   int rc;
+   long t;
+   void *status;
+
+   /* Initialize and set thread detached attribute */
+   pthread_attr_init(&attr);
+   pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
+
+   for(t=0; t<NUM_THREADS; t++) {
+      printf("Main: creating thread %ld\n", t);
+      rc = pthread_create(&thread[t], &attr, BusyWork, (void *)t); 
+      if (rc) {
+         printf("ERROR; return code from pthread_create() is %d\n", rc);
+         exit(-1);
+         }
+      }
+
+   /* Free attribute and wait for the other threads */
+   pthread_attr_destroy(&attr);
+   for(t=0; t<NUM_THREADS; t++) {
+      rc = pthread_join(thread[t], &status);
+      if (rc) {
+         printf("ERROR; return code from pthread_join() is %d\n", rc);
+         exit(-1);
+         }
+      printf("Main: completed join with thread %ld having a status of %ld\n",t,(long)status);
+      }
+ 
+printf("Main: program completed. Exiting.\n");
+pthread_exit(NULL);
+}
+
+
+### pt_mutex.c
+//**************************************************************
+//	Program : pt_mutex.c 
+//	Demonstrates the usage of pthread mutex variables
+//
+// 	2 October 20 : G.Seet
+// 	QNX 6.xx version - QNX example
+//****************************************************************
+
+#include <stdio.h>
+#include <pthread.h>
+
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+int count = 0;
+
+void* function1( void* arg )
+{
+    int tmp = 0;
+
+    while( 1 ) {
+        pthread_mutex_lock( &mutex );
+        tmp = count++;
+        pthread_mutex_unlock( &mutex );
+        printf( "Count is %d\n", tmp );
+
+        /* snooze for 1 second */
+        sleep( 1 );
+    }
+
+    return 0;
+}
+
+void* function2( void* arg )
+{
+    int tmp = 0;
+
+    while( 1 ) {
+        pthread_mutex_lock( &mutex );
+        tmp = count--;
+        pthread_mutex_unlock( &mutex );
+        printf( "** Count is %d\n", tmp );
+
+        /* snooze for 2 seconds */
+        sleep( 2 );
+    }
+
+    return 0;
+}
+
+int main( void )
+{
+    pthread_create( NULL, NULL, &function1, NULL );
+    pthread_create( NULL, NULL, &function2, NULL );
+
+    /* Let the threads run for 20 seconds. */
+    sleep( 20 );
+
+    return 0;
+}
+
