@@ -129,6 +129,24 @@ int generateArbitrary(unsigned int *wave_buffer, const char *filename) {
 
     arb_steps = i;
     printf("Found %d samples from file\n", arb_steps);
+
+    if (arb_steps != STEPS) {
+
+        int mul = STEPS / arb_steps;  // get the quotient
+        unsigned int temp_buffer[STEPS];
+        arb_steps = i*mul;
+
+        printf("Extending data to %d steps\n", STEPS);
+        printf("Wavelength increased by %d times\n", mul);
+
+        // Repeat each sample mul times
+        for (int j = arb_steps - 1; j >= 0; j--) {
+            for (int k = mul - 1; k >= 0; k--) {
+                wave_buffer[j * mul + k] = wave_buffer[j];
+            }
+        }
+    }
+    
     return i;
 }
 
