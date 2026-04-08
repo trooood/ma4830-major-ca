@@ -22,7 +22,7 @@ such as analog signals, digital clocks, modulation, and testing systems.
 //#include <unistd.h>
 //#include <fcntl.h>
 
-#define STEPS 100
+#define STEPS 100  // period
 #define MAX_VAL 0xFFFF
 #define PI 3.141592653589793
 
@@ -129,13 +129,31 @@ int generateArbitrary(unsigned int *wave_buffer, const char *filename) {
 
     arb_steps = i;
     printf("Found %d samples from file\n", arb_steps);
+
+    if (arb_steps != STEPS) {
+
+        int mul = STEPS / arb_steps;  // get the quotient
+        unsigned int temp_buffer[STEPS];
+        arb_steps = i*mul;
+
+        printf("Extending data to %d steps\n", STEPS);
+        printf("Wavelength increased by %d times\n", mul);
+
+        // Repeat each sample mul times
+        for (int j = arb_steps - 1; j >= 0; j--) {
+            for (int k = mul - 1; k >= 0; k--) {
+                wave_buffer[j * mul + k] = wave_buffer[j];
+            }
+        }
+    }
+    
     return i;
 }
 
 // ------------------------ Main Function ------------------------
 int main(int argc, char *argv[]) {
     char *type = (argc > 1) ? argv[1] : "sine";
-
+    
     double amplitude = (argc > 2) ? atof(argv[2]) : 1.0; // default full scale
     double offset    = (argc > 3) ? atof(argv[3]) : 0.0; // default mid
 
@@ -146,8 +164,16 @@ int main(int argc, char *argv[]) {
     else if (strcmp(type, "tri") == 0) generateTriangular(wave_buffer, amplitude, offset);
     else if (strcmp(type, "saw") == 0) generateSawtooth(wave_buffer, amplitude, offset);
     else if (strcmp(type, "arb") == 0) {
-        char *file = (argc > 4) ? argv[4] : "wave.txt";
-        arb_steps = generateArbitrary(wave_buffer, file);
+        char *file = "wave.txt";  // default filename
+
+        for (int i = 1; i < argc; i++) {
+            if (strstr(argv[i], ".txt") != NULL) {
+                file = argv[i];
+                break;
+            }
+        }
+    generateArbitrary(wave_buffer, file);
+
     }
     else {
         printf("Error: Unknown waveform '%s'. Program will exit.\n", type);
