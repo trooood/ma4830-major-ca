@@ -35,16 +35,21 @@ void hw_close(Device *d) {
 /* ---- MOCK HARDWARE CODE (Runs on Windows/Linux locally) ---- */
 
 int hw_open(Device *d) {
+    (void)d;
     printf("[MOCK] Hardware opened successfully. Bypassing PCI checks.\n");
     return 0;
 }
 
+// Shows on windows that it is still running
 void hw_dac(Device *d, int chan, unsigned short val) {
-    /* Do nothing. We just want the wave_thread to keep looping. */
-    (void)d; (void)chan; (void)val;
+    static int count = 0;
+    (void)d; (void)chan;
+    if (count++ % 100 == 0)
+        printf("[MOCK DAC] sample %d, val=%u\n", count, val);
 }
 
 void hw_close(Device *d) {
+    (void)d;
     printf("\n[MOCK] Hardware closed.\n");
 }
 
