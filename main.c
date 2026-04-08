@@ -1,3 +1,17 @@
+// main.c - Waveform Generator (Integrated)
+// MA4830 Major CA (NULL TERMINATORS)
+// State struct holds parameters only (no buffer).
+// Wave thread owns its local buffer, regenerates when params change.
+// Three threads:
+// 1. wave_thread   - outputs samples to DAC (high priority)
+// 2. display_thread - redraws screen continuously (~10 fps)
+// 3. main()        - keyboard input loop
+// Modules: 
+// hw.h / hw.c          - Hardware DAC interface      (Qihong)
+// waveforms.h / .c     - Waveform math               (Misha/Trudy)
+// setup_input.h / .c   - Config load/save/parse       (Alicia)
+// display (TODO)        - ASCII graphics              (Jaz)
+// Compile: gcc main.c src/hw.c sine_wave_generator_3.c -I./src -lpthread -lm -o main
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -5,33 +19,266 @@
 #include <pthread.h>
 #include <signal.h>
 #include <unistd.h>
-// to use mutex and malloc
+#include <time.h>
 
-#define DEFAULT_FREQ      100.0   /* Hz */
-#define DEFAULT_AMPLITUDE 0x7FFF  /* half of 16-bit range */
-#define DEFAULT_WAVE_TYPE 0       /* 0=sine */
-#define NUM_POINTS        100     /* samples per waveform cycle */
-#define DAC_MAX           0xFFFF  /* 16-bit DAC full scale */
-#define DAC_MID           0x7FFF  /* 16-bit DAC midpoint */
  
-/* Wave type identifiers */
-#define WAVE_SINE     0
-#define WAVE_TRIANGLE 1
-#define WAVE_SQUARE   2
+#include "hw.h"
+#include "sine_wave.h"
+/* #include "setup_input.h" */  /* To uncomment when Alicia's module is in same dir */
  
-/* ============================================================
- * SHARED STATE - all threads read/write through this struct
- * ============================================================
- * Rule: ALWAYS lock the mutex before touching this struct.
- *       ALWAYS unlock immediately after you're done.
- */
+/* ---- Wave type enum ---- */
+#define WAVE_SINE   0
+#define WAVE_SQUARE 1
+#define WAVE_TRI    2
+#define WAVE_SAW    3
+#define WAVE_ARB    4
+ 
+// Shared state (protected by mutex)
 typedef struct {
-    double frequency;       /* output frequency in Hz */
-    int    wave_type;       /* WAVE_SINE, WAVE_TRIANGLE, WAVE_SQUARE */
-    int    amplitude;       /* 0 to DAC_MID (scales the wave) */
-    int    running;         /* 1 = keep going, 0 = shutdown */
-} WaveState;
+    int    wave_type;        // WAVE_SINE, etc.        
+    double frequency;        // Hz                       
+    double amplitude;        // 0.0 to 1.0              
+    double offset;           // -1.0 to 1.0            
+    char   arb_file[256];   // filename for arbitrary
+    int    params_changed;   // dirty flag
+    int    running;          //0 = shutdown
+    pthread_mutex_t lock;
+} State;
  
-/* Global shared state and its mutex */
-WaveState    g_state;
-pthread_mutex_t g_mutex = PTHREAD_MUTEX_INITIALIZER;
+// Globals
+static State  state;
+static Device dev;
+ 
+// SIGINT handler - sets shutdown flag
+// Qihong/Jaz: extend for other graceful termination paths
+void on_sigint(int sig)
+{
+    (void)sig;
+    state.running = 0;
+}
+
+
+// WAVE OUTPUT THREAD 
+// Copies params from state under lock (short hold) and regenerates local buffer OUTSIDE lock if params changed; Outputs samples to DAC with nanosleep timing
+
+void *wave_thread(void *arg)
+{
+    unsigned int buf[STEPS];     //local buffer
+    int    local_type;
+    double local_freq, local_amp, local_off;
+    int    arb_count;
+    int    cycle_len;
+    int    i;
+    long   delay_ns;
+    struct timespec ts;
+ 
+    (void)arg;
+    arb_count = STEPS;
+
+    // TODO: replace nanosleep with QNX timer for accuracy
+    // Set real-time priority (QNX SCHED_FIFO) 
+    // struct sched_param sp;
+    // sp.sched_priority = 25;
+    // pthread_setschedparam(pthread_self(), SCHED_FIFO, &sp);
+ 
+    //Force initial buffer generation
+    generateSine(buf, 1.0, 0.0);
+ 
+    while (state.running) {
+        // Copy params under lock (short critical section)
+        pthread_mutex_lock(&state.lock);
+        local_type = state.wave_type;
+        local_freq = state.frequency;
+        local_amp  = state.amplitude;
+        local_off  = state.offset;
+ 
+        if (state.params_changed) {
+            state.params_changed = 0;
+            pthread_mutex_unlock(&state.lock);
+ 
+            //Regenerate buffer OUTSIDE lock
+            switch (local_type) {
+                case WAVE_SINE:
+                    generateSine(buf, local_amp, local_off);
+                    arb_count = STEPS;
+                    break;
+                case WAVE_SQUARE:
+                    generateSquare(buf, local_amp, local_off);
+                    arb_count = STEPS;
+                    break;
+                case WAVE_TRI:
+                    generateTriangular(buf, local_amp, local_off);
+                    arb_count = STEPS;
+                    break;
+                case WAVE_SAW:
+                    generateSawtooth(buf, local_amp, local_off);
+                    arb_count = STEPS;
+                    break;
+                case WAVE_ARB:
+                    arb_count = generateArbitrary(buf, state.arb_file);
+                    if (arb_count <= 0) {
+                        generateSine(buf, local_amp, local_off);
+                        arb_count = STEPS;
+                    }
+                    break;
+                default:
+                    generateSine(buf, local_amp, local_off);
+                    arb_count = STEPS;
+                    break;
+            }
+        } else {
+            pthread_mutex_unlock(&state.lock);
+        }
+ 
+        // One out put cycle
+        //@Trudy this is the limiter you wanted
+        cycle_len = (local_type == WAVE_ARB) ? arb_count : STEPS;
+        delay_ns = (long)(1000000000.0 / (local_freq * cycle_len));
+        if (delay_ns < 1000) delay_ns = 1000;            //minimum is 1 micro-sec
+        ts.tv_sec  = 0;
+        ts.tv_nsec = delay_ns;
+ 
+        for (i = 0; i < cycle_len; i++) {
+            if (!state.running) break;
+            hw_dac(&dev, 0, (unsigned short)buf[i]);
+            nanosleep(&ts, NULL);
+        }
+    }
+    return NULL;
+}
+ 
+//  DISPLAY THREAD
+//  Reads state under lock, draws to terminal; currently a placeholder - waiting for Jaz replaces the printf with ASCII waveform art
+//  Refreshes at ~10 fps atm
+
+void *display_thread(void *arg)
+{
+    int    local_type;
+    double local_freq, local_amp, local_off;
+    const char *names[] = {"SINE", "SQUARE", "TRI", "SAW", "ARB"};
+ 
+    (void)arg;
+ 
+    while (state.running) {
+        pthread_mutex_lock(&state.lock);
+        local_type = state.wave_type;
+        local_freq = state.frequency;
+        local_amp  = state.amplitude;
+        local_off  = state.offset;
+        pthread_mutex_unlock(&state.lock);
+ 
+        // TODO: replace this with ASCII art
+        printf("\r  Wave: %-6s | Freq: %8.1f Hz | Amp: %.2f | Off: %+.2f   ",
+               names[local_type], local_freq, local_amp, local_off);
+        fflush(stdout);
+
+        usleep(100000);  // 100ms = 10fps
+    }
+    return NULL;
+}
+ 
+
+//  HELPER: map wave type string to enum
+//  (bridges Alicia's config strings to our int enum)
+int wave_type_from_string(const char *s)
+{
+    if (strcmp(s, "sine")   == 0) return WAVE_SINE;
+    if (strcmp(s, "square") == 0) return WAVE_SQUARE;
+    if (strcmp(s, "tri")    == 0) return WAVE_TRI;
+    if (strcmp(s, "saw")    == 0) return WAVE_SAW;
+    if (strcmp(s, "arb")    == 0) return WAVE_ARB;
+    return WAVE_SINE;  // default fallback
+}
+ 
+//  (WAITING FOR) MAIN / KEYBOARD INPUT THREAD
+//  
+//   Parses command line (via Alicia's config or manual),
+//   opens hardware, spawns threads, then sits in input loop.
+//  
+//   TODO (Alicia integration):
+//     - uncomment setup_input.h include at top
+//     - use parse_command_line() to fill initial state
+//     - wire 's' key to save_config_file()
+//     - wire 'l' key to load_config_file()
+//  
+//   TODO (Qihong):
+//     - add potentiometer reading for freq/amp control
+//     - add analog switch reading for wave type cycling
+//     - hardware graceful termination path
+
+ int main(int argc, char *argv[])
+{
+    pthread_t wave_tid, disp_tid;
+    int c;
+ 
+    // Default state
+    state.wave_type      = WAVE_SINE;
+    state.frequency      = 100.0;
+    state.amplitude      = 1.0;
+    state.offset         = 0.0;
+    strcpy(state.arb_file, "wave.txt");
+    state.params_changed = 1;      // force first buffer to generate
+    state.running        = 1;
+    pthread_mutex_init(&state.lock, NULL);
+ 
+    // waiting for Alicia's parse_command_line() when ready
+    if (argc > 1) state.wave_type = wave_type_from_string(argv[1]);
+    if (argc > 2) state.frequency = atof(argv[2]);
+    if (argc > 3) state.amplitude = atof(argv[3]);
+    if (argc > 4) state.offset    = atof(argv[4]);
+    if (argc > 5 && state.wave_type == WAVE_ARB) {
+        strncpy(state.arb_file, argv[5], 255);
+        state.arb_file[255] = '\0';
+    }
+ 
+    // signal handler
+    signal(SIGINT, on_sigint);
+ 
+    // hardware check
+    if (hw_open(&dev) != 0) {
+        printf("Hardware init failed. Check PCI device.\n");
+        return 1;
+    }
+ 
+    // Thread spawning
+    pthread_create(&wave_tid, NULL, wave_thread, NULL);
+    pthread_create(&disp_tid, NULL, display_thread, NULL);
+ 
+    // keyboard input loop
+    printf("Keys: 1-Sine 2-Sqr 3-Tri 4-Saw 5-Arb | +/-:Freq | q:Quit\n");
+    while (state.running) {
+        c = getchar();
+        pthread_mutex_lock(&state.lock);
+ 
+        switch (c) {
+            case '1': state.wave_type = WAVE_SINE;   state.params_changed = 1; break;
+            case '2': state.wave_type = WAVE_SQUARE;  state.params_changed = 1; break;
+            case '3': state.wave_type = WAVE_TRI;     state.params_changed = 1; break;
+            case '4': state.wave_type = WAVE_SAW;     state.params_changed = 1; break;
+            case '5': state.wave_type = WAVE_ARB;     state.params_changed = 1; break;
+            case '+': state.frequency += 1.1;         state.params_changed = 1; break;
+            case '-':
+                if (state.frequency > 1.0) {
+                    state.frequency -= 1.1;
+                    state.params_changed = 1;
+                }
+                break;
+            case 'q':
+                state.running = 0;
+                break;
+            default:
+                break;
+        }
+ 
+        pthread_mutex_unlock(&state.lock);
+    }
+ 
+    // Graceful termination
+    pthread_join(wave_tid, NULL);
+    pthread_join(disp_tid, NULL);
+    hw_close(&dev);
+    pthread_mutex_destroy(&state.lock);
+    printf("\nClean shutdown complete.\n");
+    return 0;
+}
+
