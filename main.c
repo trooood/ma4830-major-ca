@@ -24,7 +24,7 @@
 #include "hw.h"
 #include "sine_wave.h"
 #include "ui_graphics.h"
-/* #include "setup_input.h" */  /* To uncomment when Alicia's module is in same dir */
+#include "setup_input.h"
  
 /* ---- Wave type enum ---- */
 #define WAVE_SINE   0
@@ -240,15 +240,19 @@ int wave_type_from_string(const char *s)
     state.running        = 1;
     pthread_mutex_init(&state.lock, NULL);
  
-    // waiting for Alicia's parse_command_line() when ready
-    if (argc > 1) state.wave_type = wave_type_from_string(argv[1]);
-    if (argc > 2) state.frequency = atof(argv[2]);
-    if (argc > 3) state.amplitude = atof(argv[3]);
-    if (argc > 4) state.offset    = atof(argv[4]);
-    if (argc > 5 && state.wave_type == WAVE_ARB) {
-        strncpy(state.arb_file, argv[5], 255);
-        state.arb_file[255] = '\0';
+    setup_t *cfg = parse_command_line(argc, argv);
+    if (!cfg->is_valid) {
+        printf("Error: %s\n", cfg->error_message);
+        free_setup(cfg);
+        return 1;
     }
+    state.wave_type = wave_type_from_string(cfg->waveform.waveform_type);
+    state.frequency = cfg->waveform.frequency;
+    state.amplitude = cfg->waveform.amplitude;
+    state.offset    = cfg->waveform.offset;
+    strncpy(state.arb_file, cfg->waveform.arbitrary_file, 255);
+    print_setup_summary(cfg);
+    free_setup(cfg);
  
     // signal handler
     signal(SIGINT, on_sigint);
