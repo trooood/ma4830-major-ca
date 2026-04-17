@@ -13,6 +13,9 @@
 // display              - ASCII graphics              (Jaz)
 // Compile Command(windows): gcc main.c src/hw.c sine_wave_generator_3.c ui_graphics.c setup_input.c -I./src -lpthread -lm -o main
 // Compile Command(Linux):cc -Wall -o wavegen main.c src/hw.c sine_wave_generator_3.c ui_graphics.c setup_input.c -lm
+// +/- zoom in/out; [ - move down;] - move up; s - save data to settings.dat; l- load data from settings.dat
+// sample load wave command: ./main arb 100 1.0 0.0 wave1.txt
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -315,6 +318,18 @@ int wave_type_from_string(const char *s)
             else if (key == '3') { state.wave_type = WAVE_TRI;     state.params_changed = 1; }
             else if (key == '4') { state.wave_type = WAVE_SAW;     state.params_changed = 1; }
             else if (key == '5') { state.wave_type = WAVE_ARB;     state.params_changed = 1; }
+
+            // THINKING IF WE WANNA DO MID SWAP FILES; RN IS HARDCODED NAMES, CAN GO TO SCAN FOR ALL TXT IF WE WANT TO
+            // else if (key == 'w') {
+            //     if (strcmp(state.arb_file, "wave.txt") == 0)
+            //         strcpy(state.arb_file, "wave1.txt");
+            //     else if (strcmp(state.arb_file, "wave1.txt") == 0)
+            //         strcpy(state.arb_file, "wave2.txt");
+            //     else
+            //         strcpy(state.arb_file, "wave.txt");
+            //     state.wave_type = WAVE_ARB;
+            //     state.params_changed = 1;
+            // }
             
             // Save/Load
             else if (key == 's') {
@@ -362,4 +377,5 @@ int wave_type_from_string(const char *s)
  
     return 0;
 }
+
 
