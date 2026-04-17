@@ -11,8 +11,8 @@
 // waveforms.h / .c     - Waveform math               (Misha/Trudy)
 // setup_input.h / .c   - Config load/save/parse       (Alicia)
 // display              - ASCII graphics              (Jaz)
-// Compile Command: gcc main.c src/hw.c sine_wave_generator_3.c ui_graphics.c setup_input.c -I./src -lpthread -lm -o main
-// 
+// Compile Command(windows): gcc main.c src/hw.c sine_wave_generator_3.c ui_graphics.c setup_input.c -I./src -lpthread -lm -o main
+// Compile Command(Linux):cc -Wall -o wavegen main.c src/hw.c sine_wave_generator_3.c ui_graphics.c setup_input.c -lm
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -74,11 +74,12 @@ void *wave_thread(void *arg)
     (void)arg;
     arb_count = STEPS;
 
-    // TODO: replace nanosleep with QNX timer for accuracy
-    // Set real-time priority (QNX SCHED_FIFO) 
-    // struct sched_param sp;
-    // sp.sched_priority = 25;
-    // pthread_setschedparam(pthread_self(), SCHED_FIFO, &sp);
+    #ifdef __QNX__
+        /* Real-time priority for wave output */
+        struct sched_param sp;
+        sp.sched_priority = 25;
+        pthread_setschedparam(pthread_self(), SCHED_FIFO, &sp);
+    #endif
  
     //Force initial buffer generation
     generateSine(buf, 1.0, 0.0);
