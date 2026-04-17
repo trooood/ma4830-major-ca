@@ -11,7 +11,7 @@
 // waveforms.h / .c     - Waveform math               (Misha/Trudy)
 // setup_input.h / .c   - Config load/save/parse       (Alicia)
 // display (TODO)        - ASCII graphics              (Jaz)
-// Compile: gcc main.c src/hw.c sine_wave_generator_3.c -I./src -lpthread -lm -o main
+// Compile: gcc main.c src/hw.c sine_wave_generator_3.c ui_graphics.c -I./src -lpthread -lm -o main
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -20,10 +20,10 @@
 #include <signal.h>
 #include <unistd.h>
 #include <time.h>
-
  
 #include "hw.h"
 #include "sine_wave.h"
+#include "ui_graphics.h"
 /* #include "setup_input.h" */  /* To uncomment when Alicia's module is in same dir */
  
 /* ---- Wave type enum ---- */
@@ -155,25 +155,44 @@ void *display_thread(void *arg)
 {
     int    local_type;
     double local_freq, local_amp, local_off;
-    const char *names[] = {"SINE", "SQUARE", "TRI", "SAW", "ARB"};
- 
+    int    local_running;
+    UIState ui;
+
     (void)arg;
- 
+
+    /* Initialize fixed fields */
+    ui.dac_on = 1;
+    ui.adc_enabled = 0;
+    ui.dio_ready = 0;
+    ui.tick = 0;
+    ui.show_error = 0;
+    strcpy(ui.last_message, "System started.");
+
+    hide_cursor();
+
     while (state.running) {
         pthread_mutex_lock(&state.lock);
-        local_type = state.wave_type;
-        local_freq = state.frequency;
-        local_amp  = state.amplitude;
-        local_off  = state.offset;
+        local_type    = state.wave_type;
+        local_freq    = state.frequency;
+        local_amp     = state.amplitude;
+        local_off     = state.offset;
+        local_running = state.running;
         pthread_mutex_unlock(&state.lock);
- 
-        // TODO: replace this with ASCII art
-        printf("\r  Wave: %-6s | Freq: %8.1f Hz | Amp: %.2f | Off: %+.2f   ",
-               names[local_type], local_freq, local_amp, local_off);
-        fflush(stdout);
 
-        usleep(100000);  // 100ms = 10fps
+        /* Bridge: fill Jaz's UIState from our State */
+        ui.waveform  = local_type;
+        ui.frequency = local_freq;
+        ui.amplitude = local_amp;
+        ui.mean      = local_off;
+        ui.running   = local_running;
+        ui.tick++;
+
+        render_ui(&ui);
+
+        usleep(120000);  /* ~8 fps, matches Jaz's 120ms frame time */
     }
+
+    show_cursor();
     return NULL;
 }
  
@@ -278,6 +297,7 @@ int wave_type_from_string(const char *s)
     pthread_join(disp_tid, NULL);
     hw_close(&dev);
     pthread_mutex_destroy(&state.lock);
+    show_cursor();
     printf("\nClean shutdown complete.\n");
     return 0;
 }

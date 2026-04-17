@@ -2,6 +2,7 @@
 #include <string.h>
 #include <math.h>
 #include <time.h>
+#include "ui_graphics.h"
 
 #define PREVIEW_W 72
 #define PREVIEW_H 16
@@ -12,19 +13,19 @@
 #define WAVE_TRIANGLE 2
 #define WAVE_SAWTOOTH 3
 
-typedef struct {
-    int waveform;
-    double frequency;
-    double amplitude;
-    double mean;
-    int dac_on;
-    int adc_enabled;
-    int dio_ready;
-    int running;
-    int tick;
-    int show_error;
-    char last_message[128];
-} UIState;
+// typedef struct {
+//     int waveform;
+//     double frequency;
+//     double amplitude;
+//     double mean;
+//     int dac_on;
+//     int adc_enabled;
+//     int dio_ready;
+//     int running;
+//     int tick;
+//     int show_error;
+//     char last_message[128];
+// } UIState;
 
 void pause_ms(unsigned long ms);
 void clear_screen(void);
@@ -108,6 +109,8 @@ const char *waveform_name(int waveform)
             return "TRIANGLE";
         case WAVE_SAWTOOTH:
             return "SAWTOOTH";
+        case 4:
+            return "ARBITRARY";
         default:
             return "UNKNOWN";
     }
@@ -264,60 +267,60 @@ void render_ui(const UIState *state)
     fflush(stdout);
 }
 
-void update_demo_state(UIState *state)
-{
-    state->tick = state->tick + 1;
+// void update_demo_state(UIState *state)
+// {
+//     state->tick = state->tick + 1;
 
-    if ((state->tick % 35) == 0) {
-        state->waveform = (state->waveform + 1) % 4;
-        copy_text(state->last_message, "Waveform changed successfully.", 128);
-    }
+//     if ((state->tick % 35) == 0) {
+//         state->waveform = (state->waveform + 1) % 4;
+//         copy_text(state->last_message, "Waveform changed successfully.", 128);
+//     }
 
-    state->frequency = 440.0 + (40.0 * sin(0.05 * (double)state->tick));
-    state->amplitude = 0.55 + (0.35 * sin(0.08 * (double)state->tick));
-    state->amplitude = clamp_double(state->amplitude, 0.05, 1.0);
-    state->mean = 0.0 + (0.20 * sin(0.03 * (double)state->tick));
-    state->mean = clamp_double(state->mean, -0.8, 0.8);
+//     state->frequency = 440.0 + (40.0 * sin(0.05 * (double)state->tick));
+//     state->amplitude = 0.55 + (0.35 * sin(0.08 * (double)state->tick));
+//     state->amplitude = clamp_double(state->amplitude, 0.05, 1.0);
+//     state->mean = 0.0 + (0.20 * sin(0.03 * (double)state->tick));
+//     state->mean = clamp_double(state->mean, -0.8, 0.8);
 
-    if ((state->tick % 50) == 0) {
-        copy_text(state->last_message, "ADC updated amplitude from potentiometer input.", 128);
-    }
+//     if ((state->tick % 50) == 0) {
+//         copy_text(state->last_message, "ADC updated amplitude from potentiometer input.", 128);
+//     }
 
-    if ((state->tick % 60) == 0) {
-        state->show_error = 1;
-    } else if ((state->tick % 60) == 10) {
-        state->show_error = 0;
-    }
-}
+//     if ((state->tick % 60) == 0) {
+//         state->show_error = 1;
+//     } else if ((state->tick % 60) == 10) {
+//         state->show_error = 0;
+//     }
+// }
 
-int main(void)
-{
-    UIState state;
-    int frame_count;
+// int main(void)
+// {
+//     UIState state;
+//     int frame_count;
 
-    state.waveform = WAVE_SINE;
-    state.frequency = 440.0;
-    state.amplitude = 0.80;
-    state.mean = 0.00;
-    state.dac_on = 1;
-    state.adc_enabled = 1;
-    state.dio_ready = 1;
-    state.running = 1;
-    state.tick = 0;
-    state.show_error = 0;
-    copy_text(state.last_message, "System started successfully.", 128);
+//     state.waveform = WAVE_SINE;
+//     state.frequency = 440.0;
+//     state.amplitude = 0.80;
+//     state.mean = 0.00;
+//     state.dac_on = 1;
+//     state.adc_enabled = 1;
+//     state.dio_ready = 1;
+//     state.running = 1;
+//     state.tick = 0;
+//     state.show_error = 0;
+//     copy_text(state.last_message, "System started successfully.", 128);
 
-    hide_cursor();
+//     hide_cursor();
 
-    for (frame_count = 0; frame_count < 120; frame_count++) {
-        render_ui(&state);
-        update_demo_state(&state);
-        pause_ms(120);
-    }
+//     for (frame_count = 0; frame_count < 120; frame_count++) {
+//         render_ui(&state);
+//         update_demo_state(&state);
+//         pause_ms(120);
+//     }
 
-    show_cursor();
-    clear_screen();
-    printf("Exited UI preview cleanly.\n");
+//     show_cursor();
+//     clear_screen();
+//     printf("Exited UI preview cleanly.\n");
 
-    return 0;
-}
+//     return 0;
+// }

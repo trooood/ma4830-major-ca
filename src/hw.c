@@ -44,8 +44,8 @@ void hw_dac(Device *d, int chan, unsigned short val) {
     static int count = 0;
     (void)d; (void)chan;
     /* Print every 307th sample (prime number avoids aliasing with 100-sample cycle) */
-    if (count++ % 307 == 0)
-        printf("[MOCK DAC] #%d val=%u\n", count, val);
+    // if (count++ % 307 == 0)
+    //     printf("[MOCK DAC] #%d val=%u\n", count, val);
 }
 
 void hw_close(Device *d) {
