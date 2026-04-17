@@ -10,8 +10,9 @@
 // hw.h / hw.c          - Hardware DAC interface      (Qihong)
 // waveforms.h / .c     - Waveform math               (Misha/Trudy)
 // setup_input.h / .c   - Config load/save/parse       (Alicia)
-// display (TODO)        - ASCII graphics              (Jaz)
-// Compile: gcc main.c src/hw.c sine_wave_generator_3.c ui_graphics.c -I./src -lpthread -lm -o main
+// display              - ASCII graphics              (Jaz)
+// Compile Command: gcc main.c src/hw.c sine_wave_generator_3.c ui_graphics.c setup_input.c -I./src -lpthread -lm -o main
+// 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -56,8 +57,6 @@ void on_sigint(int sig)
     (void)sig;
     state.running = 0;
 }
-
-
 // WAVE OUTPUT THREAD 
 // Copies params from state under lock (short hold) and regenerates local buffer OUTSIDE lock if params changed; Outputs samples to DAC with nanosleep timing
 
@@ -148,7 +147,7 @@ void *wave_thread(void *arg)
 }
  
 //  DISPLAY THREAD
-//  Reads state under lock, draws to terminal; currently a placeholder - waiting for Jaz replaces the printf with ASCII waveform art
+//  Renders Jaz's ASCII dashboard, bridging our State to her UIState.
 //  Refreshes at ~10 fps atm
 
 void *display_thread(void *arg)
@@ -208,18 +207,7 @@ int wave_type_from_string(const char *s)
     if (strcmp(s, "arb")    == 0) return WAVE_ARB;
     return WAVE_SINE;  // default fallback
 }
- 
-//  (WAITING FOR) MAIN / KEYBOARD INPUT THREAD
-//  
-//   Parses command line (via Alicia's config or manual),
-//   opens hardware, spawns threads, then sits in input loop.
-//  
-//   TODO (Alicia integration):
-//     - uncomment setup_input.h include at top
-//     - use parse_command_line() to fill initial state
-//     - wire 's' key to save_config_file()
-//     - wire 'l' key to load_config_file()
-//  
+ //  
 //   TODO (Qihong):
 //     - add potentiometer reading for freq/amp control
 //     - add analog switch reading for wave type cycling
@@ -228,8 +216,12 @@ int wave_type_from_string(const char *s)
  int main(int argc, char *argv[])
 {
     pthread_t wave_tid, disp_tid;
-    int c;
- 
+    setup_t *cfg;
+    setup_t save;
+    setup_t *loaded;
+    char key;
+    int up, down, left, right;
+
     // Default state
     state.wave_type      = WAVE_SINE;
     state.frequency      = 100.0;
@@ -240,7 +232,7 @@ int wave_type_from_string(const char *s)
     state.running        = 1;
     pthread_mutex_init(&state.lock, NULL);
  
-    setup_t *cfg = parse_command_line(argc, argv);
+    cfg = parse_command_line(argc, argv);
     if (!cfg->is_valid) {
         printf("Error: %s\n", cfg->error_message);
         free_setup(cfg);
@@ -267,42 +259,106 @@ int wave_type_from_string(const char *s)
     pthread_create(&wave_tid, NULL, wave_thread, NULL);
     pthread_create(&disp_tid, NULL, display_thread, NULL);
  
-    // keyboard input loop
-    printf("Keys: 1-Sine 2-Sqr 3-Tri 4-Saw 5-Arb | +/-:Freq | q:Quit\n");
+    // keyboard input loop (non-blocking via Alicia's keyboard module)
+    keyboard_init();
+
     while (state.running) {
-        c = getchar();
-        pthread_mutex_lock(&state.lock);
- 
-        switch (c) {
-            case '1': state.wave_type = WAVE_SINE;   state.params_changed = 1; break;
-            case '2': state.wave_type = WAVE_SQUARE;  state.params_changed = 1; break;
-            case '3': state.wave_type = WAVE_TRI;     state.params_changed = 1; break;
-            case '4': state.wave_type = WAVE_SAW;     state.params_changed = 1; break;
-            case '5': state.wave_type = WAVE_ARB;     state.params_changed = 1; break;
-            case '+': state.frequency += 1.1;         state.params_changed = 1; break;
-            case '-':
-                if (state.frequency > 1.0) {
-                    state.frequency -= 1.1;
+        key = 0;
+        up = 0, down = 0, left = 0, right = 0;
+
+        keyboard_read_arrow(&key, &up, &down, &left, &right);
+
+        if (key || up || down || left || right) {
+            pthread_mutex_lock(&state.lock);
+
+            if (up) {
+                state.frequency *= 1.1;
+                if (state.frequency > 20000) state.frequency = 20000;
+                state.params_changed = 1;
+            }
+            else if (down) {
+                state.frequency /= 1.1;
+                if (state.frequency < 0.01) state.frequency = 0.01;
+                state.params_changed = 1;
+            }
+            else if (right) {
+                state.wave_type = (state.wave_type + 1) % 5;
+                state.params_changed = 1;
+            }
+            else if (left) {
+                state.wave_type = (state.wave_type + 4) % 5;
+                state.params_changed = 1;
+            }
+            else if (key == '+') {
+                state.amplitude += 0.05;
+                if (state.amplitude > 1.0) state.amplitude = 1.0;
+                state.params_changed = 1;
+            }
+            else if (key == '-') {
+                state.amplitude -= 0.05;
+                if (state.amplitude < 0.0) state.amplitude = 0.0;
+                state.params_changed = 1;
+            }
+            else if (key == ']') {
+                state.offset += 0.05;
+                if (state.offset > 1.0) state.offset = 1.0;
+                state.params_changed = 1;
+            }
+            else if (key == '[') {
+                state.offset -= 0.05;
+                if (state.offset < -1.0) state.offset = -1.0;
+                state.params_changed = 1;
+            }
+            else if (key == '1') { state.wave_type = WAVE_SINE;   state.params_changed = 1; }
+            else if (key == '2') { state.wave_type = WAVE_SQUARE;  state.params_changed = 1; }
+            else if (key == '3') { state.wave_type = WAVE_TRI;     state.params_changed = 1; }
+            else if (key == '4') { state.wave_type = WAVE_SAW;     state.params_changed = 1; }
+            else if (key == '5') { state.wave_type = WAVE_ARB;     state.params_changed = 1; }
+            
+            // Save/Load
+            else if (key == 's') {
+                const char *wnames[] = {"sine", "square", "tri", "saw", "arb"};
+                strcpy(save.waveform.waveform_type, wnames[state.wave_type]);
+                save.waveform.frequency = state.frequency;
+                save.waveform.amplitude = state.amplitude;
+                save.waveform.offset = state.offset;
+                strcpy(save.waveform.arbitrary_file, state.arb_file);
+                save.output.output_mode = 0;
+                save.output.sample_rate = 48000;
+                save.output.duration_seconds = 0;
+                save_config_file("settings.dat", &save);
+            }
+            else if (key == 'l') {
+                loaded = load_config_file("settings.dat");
+                if (loaded && loaded->is_valid) {
+                    state.wave_type = wave_type_from_string(loaded->waveform.waveform_type);
+                    state.frequency = loaded->waveform.frequency;
+                    state.amplitude = loaded->waveform.amplitude;
+                    state.offset    = loaded->waveform.offset;
                     state.params_changed = 1;
+                    free_setup(loaded);
                 }
-                break;
-            case 'q':
+            }
+
+            else if (key == 'q' || key == 'Q') {
                 state.running = 0;
-                break;
-            default:
-                break;
+            }
+
+            pthread_mutex_unlock(&state.lock);
         }
- 
-        pthread_mutex_unlock(&state.lock);
+
+        usleep(20000);  // 20ms poll rate
     }
- 
-    // Graceful termination
+
+    // Graceful shutdown
+    keyboard_restore();
     pthread_join(wave_tid, NULL);
     pthread_join(disp_tid, NULL);
     hw_close(&dev);
     pthread_mutex_destroy(&state.lock);
     show_cursor();
     printf("\nClean shutdown complete.\n");
+ 
     return 0;
 }
 
