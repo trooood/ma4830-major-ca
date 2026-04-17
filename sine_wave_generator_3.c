@@ -140,7 +140,7 @@ int generateArbitrary(unsigned int *wave_buffer, const char *filename) {
         printf("Wavelength increased by %d times\n", mul);
 
         // Repeat each sample mul times
-        for (int j = arb_steps - 1; j >= 0; j--) {
+        for (int j = i - 1; j >= 0; j--) {
             for (int k = mul - 1; k >= 0; k--) {
                 wave_buffer[j * mul + k] = wave_buffer[j];
             }
