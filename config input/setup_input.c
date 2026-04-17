@@ -236,16 +236,223 @@ void print_setup_summary(const setup_t *setup) {
     } else {
         printf("Duration:    INFINITE\n");
     }
-    
-    printf("\nSetup Status: %s\n", setup->is_valid ? "VALID" : "INVALID");
-    if (!setup->is_valid) {
-        printf("Error: %s\n", setup->error_message);
-    }
-    printf("\n");
 }
 
 void free_setup(setup_t *setup) {
     if (setup) {
         free(setup);
     }
+}
+
+// KEYBOARD INPUT FUNCTIONS 
+#include <termios.h>
+#include <fcntl.h>
+
+static struct termios orig_termios;
+
+void keyboard_init(void) {
+    struct termios raw;
+    
+    tcgetattr(STDIN_FILENO, &orig_termios);
+    raw = orig_termios;
+    
+    // Disable canonical mode, echo, signals
+    raw.c_lflag &= ~(ICANON | ECHO | ISIG);
+    raw.c_cc[VMIN] = 0;  // Non-blocking
+    raw.c_cc[VTIME] = 0; // No timeout
+    
+    tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
+}
+
+void keyboard_restore(void) {
+    tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios);
+}
+
+char keyboard_getch(void) {
+    char ch;
+    if (read(STDIN_FILENO, &ch, 1) == 1) {
+        return ch;
+    }
+    return 0;
+}
+
+int keyboard_kbhit(void) {
+    int count;
+    ioctl(STDIN_FILENO, FIONREAD, &count);
+    return count > 0;
+}
+
+void keyboard_read_arrow(char *key, int *up, int *down, int *left, int *right) {
+    *up = *down = *left = *right = 0;
+    
+    if (keyboard_kbhit()) {
+        char ch = keyboard_getch();
+        
+        if (ch == 27) {  // ESC sequence for arrows
+            if (keyboard_kbhit() && keyboard_getch() == '[') {
+                if (keyboard_kbhit()) {
+                    ch = keyboard_getch();
+                    switch(ch) {
+                        case 'A': *up = 1; *key = 'U'; break;
+                        case 'B': *down = 1; *key = 'D'; break;
+                        case 'C': *right = 1; *key = 'R'; break;
+                        case 'D': *left = 1; *key = 'L'; break;
+                    }
+                }
+            }
+        } else {
+            *key = ch;
+        }
+    }
+}
+
+void keyboard_input_loop(setup_t *setup) {
+    char key = 0;
+    int up = 0, down = 0, left = 0, right = 0;
+       
+    keyboard_init();
+    
+    while (1) {
+        keyboard_read_arrow(&key, &up, &down, &left, &right);
+        
+        if (up) {
+            setup->waveform.frequency *= 1.1;
+            if (setup->waveform.frequency > 20000) setup->waveform.frequency = 20000;
+            printf("\rFrequency: %.2f Hz     ", setup->waveform.frequency);
+            fflush(stdout);
+        }
+        else if (down) {
+            setup->waveform.frequency /= 1.1;
+            if (setup->waveform.frequency < 0.01) setup->waveform.frequency = 0.01;
+            printf("\rFrequency: %.2f Hz     ", setup->waveform.frequency);
+            fflush(stdout);
+        }
+        else if (left) {
+            if (strcmp(setup->waveform.waveform_type, "sine") == 0)
+                strcpy(setup->waveform.waveform_type, "saw");
+            else if (strcmp(setup->waveform.waveform_type, "saw") == 0)
+                strcpy(setup->waveform.waveform_type, "tri");
+            else if (strcmp(setup->waveform.waveform_type, "tri") == 0)
+                strcpy(setup->waveform.waveform_type, "square");
+            else if (strcmp(setup->waveform.waveform_type, "square") == 0)
+                strcpy(setup->waveform.waveform_type, "arb");
+            else if (strcmp(setup->waveform.waveform_type, "arb") == 0)
+                strcpy(setup->waveform.waveform_type, "sine");
+            
+            printf("\rWaveform: %s     ", setup->waveform.waveform_type);
+            fflush(stdout);
+        }
+        else if (right) {
+            if (strcmp(setup->waveform.waveform_type, "sine") == 0)
+                strcpy(setup->waveform.waveform_type, "square");
+            else if (strcmp(setup->waveform.waveform_type, "square") == 0)
+                strcpy(setup->waveform.waveform_type, "tri");
+            else if (strcmp(setup->waveform.waveform_type, "tri") == 0)
+                strcpy(setup->waveform.waveform_type, "saw");
+            else if (strcmp(setup->waveform.waveform_type, "saw") == 0)
+                strcpy(setup->waveform.waveform_type, "arb");
+            else if (strcmp(setup->waveform.waveform_type, "arb") == 0)
+                strcpy(setup->waveform.waveform_type, "sine");
+            
+            printf("\rWaveform: %s     ", setup->waveform.waveform_type);
+            fflush(stdout);
+        }
+        else if (key == '+') {
+            setup->waveform.amplitude += 0.05;
+            if (setup->waveform.amplitude > 1.0) setup->waveform.amplitude = 1.0;
+            printf("\rAmplitude: %.2f     ", setup->waveform.amplitude);
+            fflush(stdout);
+        }
+        else if (key == '-') {
+            setup->waveform.amplitude -= 0.05;
+            if (setup->waveform.amplitude < 0.0) setup->waveform.amplitude = 0.0;
+            printf("\rAmplitude: %.2f     ", setup->waveform.amplitude);
+            fflush(stdout);
+        }
+        else if (key == '[') {
+            setup->waveform.offset -= 0.05;
+            if (setup->waveform.offset < -1.0) setup->waveform.offset = -1.0;
+            printf("\rOffset: %.2f     ", setup->waveform.offset);
+            fflush(stdout);
+        }
+        else if (key == ']') {
+            setup->waveform.offset += 0.05;
+            if (setup->waveform.offset > 1.0) setup->waveform.offset = 1.0;
+            printf("\rOffset: %.2f     ", setup->waveform.offset);
+            fflush(stdout);
+        }
+        else if (key == 'f' || key == 'F') {
+            printf("\nEnter frequency (Hz, 0.01-20000): ");
+            fflush(stdout);
+            char buffer[32];
+            if (fgets(buffer, sizeof(buffer), stdin)) {
+                double new_freq = atof(buffer);
+                if (new_freq >= 0.01 && new_freq <= 20000) {
+                    setup->waveform.frequency = new_freq;
+                    printf("Frequency set to %.2f Hz\n", setup->waveform.frequency);
+                } else {
+                    printf("Invalid frequency. Using %.2f Hz\n", setup->waveform.frequency);
+                }
+            }
+            printf("\r%s", "                                        ");
+            printf("\r");
+            fflush(stdout);
+        }
+        else if (key == 'a' || key == 'A') {
+            printf("\nEnter amplitude (0.0-1.0): ");
+            fflush(stdout);
+            char buffer[32];
+            if (fgets(buffer, sizeof(buffer), stdin)) {
+                double new_amp = atof(buffer);
+                if (new_amp >= 0.0 && new_amp <= 1.0) {
+                    setup->waveform.amplitude = new_amp;
+                    printf("Amplitude set to %.2f\n", setup->waveform.amplitude);
+                } else {
+                    printf("Invalid amplitude. Using %.2f\n", setup->waveform.amplitude);
+                }
+            }
+            printf("\r%s", "                                        ");
+            printf("\r");
+            fflush(stdout);
+        }
+        else if (key == 'o' || key == 'O') {
+            printf("\nEnter offset (-1.0 to 1.0): ");
+            fflush(stdout);
+            char buffer[32];
+            if (fgets(buffer, sizeof(buffer), stdin)) {
+                double new_off = atof(buffer);
+                if (new_off >= -1.0 && new_off <= 1.0) {
+                    setup->waveform.offset = new_off;
+                    printf("Offset set to %.2f\n", setup->waveform.offset);
+                } else {
+                    printf("Invalid offset. Using %.2f\n", setup->waveform.offset);
+                }
+            }
+            printf("\r%s", "                                        ");
+            printf("\r");
+            fflush(stdout);
+        }
+        else if (key == 's' || key == 'S') {
+            save_config_file("keyboard_settings.dat", setup);
+            printf("\nConfiguration saved to keyboard_settings.dat\n");
+        }
+        else if (key == 'l' || key == 'L') {
+            setup_t *loaded = load_config_file("keyboard_settings.dat");
+            if (loaded && loaded->is_valid) {
+                *setup = *loaded;
+                free_setup(loaded);
+                printf("\nConfiguration loaded from keyboard_settings.dat\n");
+                print_setup_summary(setup);
+            } else {
+                printf("\nNo saved configuration found\n");
+            }
+        }
+        else if (key == 'q' || key == 'Q') {
+            break;
+        }
+        
+        usleep(50000);  // 50ms delay
+    }
+    
+    keyboard_restore();
 }
