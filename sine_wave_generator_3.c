@@ -110,7 +110,7 @@ void generateSawtooth(unsigned int *wave_buffer, double amplitude, double offset
 // ------------------------ Arbitrary Waveform from File ------------------------
 int arb_steps = STEPS;  // init to default number of steps
 
-int generateArbitrary(unsigned int *wave_buffer, const char *filename, double amplitude, double offset) {
+int generateArbitrary(int *wave_buffer, const char *filename, double amplitude, double offset) {
     FILE *file;
     int i = 0;
     double val;
@@ -122,13 +122,12 @@ int generateArbitrary(unsigned int *wave_buffer, const char *filename, double am
         return STEPS;
     }
 
-    while (i < STEPS && fscanf(file, "%u", &wave_buffer[i]) != EOF) {  // this part should go into a temp buffer
-        if (wave_buffer[i] > MAX_VAL) wave_buffer[i] = MAX_VAL;
+    while (i < STEPS && fscanf(file, "%d", &wave_buffer[i]) != EOF) {  // this part should go into a temp buffer
+        //if (wave_buffer[i] > MAX_VAL) wave_buffer[i] = MAX_VAL;
         i++;
     }
     fclose(file);
 
-    // rescale (amp)
     int min_val = wave_buffer[0];
     int max_val = wave_buffer[0];
 
@@ -148,6 +147,21 @@ int generateArbitrary(unsigned int *wave_buffer, const char *filename, double am
     int range = max_val - min_val;
     float mul_val = (float)MAX_VAL / range;
 
+    // if there are -ve numbers, push them to positive
+    if (min_val < 0) {
+        int pos_shift = -min_val;
+        for (int j = 0; j < i; j++) {
+            wave_buffer[j] += pos_shift;
+        }
+        
+    }
+
+    printf("\nwave_buffer contents (%d elements):\n", STEPS);
+    for (int idx = 0; idx < STEPS; idx++) {
+        printf("wave_buffer[%d] = %u\n", idx, wave_buffer[idx]);
+    }
+
+    // rescale (amp)
     for (int j = 0; j < i; j++) {
         wave_buffer[j] = (unsigned int)floorf(wave_buffer[j] * mul_val);
     }
