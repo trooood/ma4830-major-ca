@@ -155,14 +155,14 @@ int generateArbitrary(unsigned int *wave_buffer, const char *filename) {
         }
 
         // for debugging buffer (comment this out when output gets fixed)
-        
+        /*
         printf("\nwave_buffer contents (%d elements):\n", STEPS);
         for (int idx = 0; idx < STEPS; idx++) {
             printf("wave_buffer[%d] = %u\n", idx, wave_buffer[idx]);
         }
-        
+        */
 
-        //arb_steps = STEPS;
+        arb_steps = STEPS;
 
     }
     
