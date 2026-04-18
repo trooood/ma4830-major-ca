@@ -121,7 +121,7 @@ int generateArbitrary(unsigned int *wave_buffer, const char *filename) {
         return STEPS;
     }
 
-    while (i < STEPS && fscanf(file, "%u", &wave_buffer[i]) != EOF) {
+    while (i < STEPS && fscanf(file, "%u", &wave_buffer[i]) != EOF) {  // this part should go into a temp buffer
         if (wave_buffer[i] > MAX_VAL) wave_buffer[i] = MAX_VAL;
         i++;
     }
@@ -130,24 +130,43 @@ int generateArbitrary(unsigned int *wave_buffer, const char *filename) {
     arb_steps = i;
     printf("Found %d samples from file\n", arb_steps);
 
-    if (arb_steps != STEPS) {
-
-        int mul = STEPS / arb_steps;  // get the quotient
+    int mul = STEPS / arb_steps;  // get the quotient
+    if (mul > 1) {  // samples need to be stretched
         unsigned int temp_buffer[STEPS];
-        arb_steps = i*mul;
 
+        for (int j = 0; j < arb_steps; j++) {  // move stuff into wave_buffer to temp_buffer
+            temp_buffer[j] = wave_buffer[j];
+        }
+        for (int j = 0; j < STEPS; j++) {  // clear wave_buffer
+            wave_buffer[j] = 0;
+        }
+
+        //arb_steps = i*mul;
         printf("Extending data to %d steps\n", STEPS);
         printf("Wavelength increased by %d times\n", mul);
 
         // Repeat each sample mul times
-        for (int j = arb_steps - 1; j >= 0; j--) {
-            for (int k = mul - 1; k >= 0; k--) {
-                wave_buffer[j * mul + k] = wave_buffer[j];
+        int index = 0;
+        for (int j = 0; j < arb_steps; j++) {
+            for (int k = 0; k < mul; k++) {
+                wave_buffer[index++] = temp_buffer[j];
+                //printf("j = %d, k = %d", j, k);
             }
         }
+
+        // for debugging buffer (comment this out when output gets fixed)
+        
+        printf("\nwave_buffer contents (%d elements):\n", STEPS);
+        for (int idx = 0; idx < STEPS; idx++) {
+            printf("wave_buffer[%d] = %u\n", idx, wave_buffer[idx]);
+        }
+        
+
+        //arb_steps = STEPS;
+
     }
     
-    return i;
+    //return i;
 }
 
 // ------------------------ Main Function ------------------------
