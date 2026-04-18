@@ -110,9 +110,10 @@ void generateSawtooth(unsigned int *wave_buffer, double amplitude, double offset
 // ------------------------ Arbitrary Waveform from File ------------------------
 int arb_steps = STEPS;  // init to default number of steps
 
-int generateArbitrary(unsigned int *wave_buffer, const char *filename) {
+int generateArbitrary(unsigned int *wave_buffer, const char *filename, double amplitude, double offset) {
     FILE *file;
     int i = 0;
+    double val;
 
     file = fopen(filename, "r");
     if (file == NULL) {
@@ -127,11 +128,37 @@ int generateArbitrary(unsigned int *wave_buffer, const char *filename) {
     }
     fclose(file);
 
+    // rescale (amp)
+    unsigned int min_val = wave_buffer[0];
+    unsigned int max_val = wave_buffer[0];
+
+    for (int j = 0; j < i; j++) {  // find max and min of file values
+        if (wave_buffer[j] < min_val) {
+            min_val = wave_buffer[j];
+        }
+        if (wave_buffer[j] > max_val) {
+            max_val = wave_buffer[j];
+        }
+    }
+
+    printf("min = %d\n", min_val);
+    printf("max = %d\n", max_val);
+    printf("MAX_VAL = %d\n", MAX_VAL);
+
+    int range = max_val - min_val;
+    float mul_val = (float)MAX_VAL / range;
+
+    for (int j = 0; j < i; j++) {
+        wave_buffer[j] = (unsigned int)floorf(wave_buffer[j] * mul_val);
+    }
+
+
+    // rescale (time)
     arb_steps = i;
     printf("Found %d samples from file\n", arb_steps);
 
-    int mul = STEPS / arb_steps;  // get the quotient
-    if (mul > 1) {  // samples need to be stretched
+    int mul_time = STEPS / arb_steps;  // get the quotient
+    if (mul_time > 1) {  // samples need to be stretched
         unsigned int temp_buffer[STEPS];
 
         for (int j = 0; j < arb_steps; j++) {  // move stuff into wave_buffer to temp_buffer
@@ -141,14 +168,14 @@ int generateArbitrary(unsigned int *wave_buffer, const char *filename) {
             wave_buffer[j] = 0;
         }
 
-        //arb_steps = i*mul;
+        //arb_steps = i*mul_time;
         printf("Extending data to %d steps\n", STEPS);
-        printf("Wavelength increased by %d times\n", mul);
+        printf("Wavelength increased by %d times\n", mul_time);
 
-        // Repeat each sample mul times
+        // Repeat each sample mul_time times
         int index = 0;
         for (int j = 0; j < arb_steps; j++) {
-            for (int k = 0; k < mul; k++) {
+            for (int k = 0; k < mul_time; k++) {
                 wave_buffer[index++] = temp_buffer[j];
                 //printf("j = %d, k = %d", j, k);
             }
@@ -191,7 +218,7 @@ int main(int argc, char *argv[]) {
                 break;
             }
         }
-    generateArbitrary(wave_buffer, file);
+    generateArbitrary(wave_buffer, file, amplitude, offset);
 
     }
     else {
