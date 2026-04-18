@@ -33,7 +33,7 @@ unsigned int wave_buffer[STEPS];  // output value
 
 /* Function 1: Sine Wave */
 // Sine wave with amplitude [0–1] and offset [-1 to +1]
-void generateSine(unsigned int *wave_buffer,double amplitude, double offset) {
+void generateSine(unsigned int *wave_buffer, double amplitude, double offset) {
     int i;
     double val;
     for (i = 0; i < STEPS; i++) {
@@ -129,8 +129,8 @@ int generateArbitrary(unsigned int *wave_buffer, const char *filename, double am
     fclose(file);
 
     // rescale (amp)
-    unsigned int min_val = wave_buffer[0];
-    unsigned int max_val = wave_buffer[0];
+    int min_val = wave_buffer[0];
+    int max_val = wave_buffer[0];
 
     for (int j = 0; j < i; j++) {  // find max and min of file values
         if (wave_buffer[j] < min_val) {
@@ -190,9 +190,19 @@ int generateArbitrary(unsigned int *wave_buffer, const char *filename, double am
         */
 
         arb_steps = STEPS;
+    }
+
+    //printf("offset = %f\n", offset);
+    //printf("amplitude = %f\n", amplitude);
+
+    // handle amplitude and offset differently
+    for (i=0; i < arb_steps; i++) {
+        val = wave_buffer[i];
+        val = (offset * MAX_VAL) + (amplitude * val);  // this is rescaled because the wave file is in the range [0,MAX_VAL] and not [-1,1]
+        wave_buffer[i] = val;
 
     }
-    
+
     //return i;
 }
 
@@ -218,8 +228,12 @@ int main(int argc, char *argv[]) {
                 break;
             }
         }
-    generateArbitrary(wave_buffer, file, amplitude, offset);
 
+        // for arb args, the argument index is now 3 and 4
+        double amplitude = (argc > 3) ? atof(argv[3]) : 1.0; // default full scale
+        double offset    = (argc > 4) ? atof(argv[4]) : 0.0; // default mid
+
+        generateArbitrary(wave_buffer, file, amplitude, offset);
     }
     else {
         printf("Error: Unknown waveform '%s'. Program will exit.\n", type);
