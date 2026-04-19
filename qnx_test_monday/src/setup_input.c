@@ -34,8 +34,8 @@ setup_t* parse_command_line(int argc, char *argv[]) {
      
     if (argc > 1) {
         char *type = argv[1];
-        
-        for(int i = 0; type[i]; i++) {
+        int i;
+        for(i = 0; type[i]; i++) {
             type[i] = tolower(type[i]);
         }
         
@@ -74,29 +74,32 @@ setup_t* parse_command_line(int argc, char *argv[]) {
 
 // configuration file input
 setup_t* load_config_file(const char *filename) {
-    setup_t *setup = (setup_t*)malloc(sizeof(setup_t));
+    setup_t *setup;
+    FILE *fp;
+    char line[512];
+    char key[256];
+    char value[256];
+
+    setup = (setup_t*)malloc(sizeof(setup_t));
     if (!setup) return NULL;
     
     apply_defaults(setup);
-    
-    FILE *fp = fopen(filename, "r");
+    fp = fopen(filename, "r");
     if (!fp) {
         setup->is_valid = 0;
         sprintf(setup->error_message, "Cannot open config file: %s", filename);
         return setup;
     }
     
-    char line[512];
-    char key[256];
-    char value[256];
-    
     while (fgets(line, sizeof(line), fp)) {
         if (line[0] == '#' || line[0] == '\n') continue;
-        
         if (sscanf(line, "%255[^=]=%255s", key, value) == 2) {
             char *k = key;
+            char *end; /* Moved to top of block */
+            
             while (*k == ' ' || *k == '\t') k++;
-            char *end = k + strlen(k) - 1;
+            
+            end = k + strlen(k) - 1; /* Assignment happens after declarations */
             while (end > k && (*end == ' ' || *end == '\t' || *end == '\n')) end--;
             *(end+1) = '\0';
             
@@ -135,13 +138,18 @@ setup_t* load_config_file(const char *filename) {
 }
 
 void save_config_file(const char *filename, const setup_t *setup) {
-    FILE *fp = fopen(filename, "w");
+    FILE *fp;
+    time_t now;
+    const char *modes[] = {"dac", "terminal", "audio", "file", "multi"};
+    
+    /* 2. Executable code begins here */
+    fp = fopen(filename, "w");
     if (!fp) {
         printf("Error: Cannot save config file %s\n", filename);
         return;
     }
     
-    time_t now = time(NULL);
+    now = time(NULL);
     fprintf(fp, "Beat Generator Configuration File\n");
   
     fprintf(fp, "# waveform Settings\n");
@@ -152,7 +160,6 @@ void save_config_file(const char *filename, const setup_t *setup) {
     fprintf(fp, "arbitrary_file = %s\n", setup->waveform.arbitrary_file);
     
     fprintf(fp, "\n# output Settings\n");
-    const char *modes[] = {"dac", "terminal", "audio", "file", "multi"};
     fprintf(fp, "output_mode = %s\n", modes[setup->output.output_mode]);
     fprintf(fp, "sample_rate = %d\n", setup->output.sample_rate);
     fprintf(fp, "duration = %d\n", setup->output.duration_seconds);
@@ -212,6 +219,8 @@ int validate_setup(setup_t *setup) {
 
 // print selected setup configuration summary
 void print_setup_summary(const setup_t *setup) {
+    const char *modes[] = {"DAC", "TERMINAL", "AUDIO", "FILE", "MULTI"};
+    
     if (!setup) return;
     
     printf("\n");
@@ -222,12 +231,10 @@ void print_setup_summary(const setup_t *setup) {
     printf("Frequency:   %.2f Hz\n", setup->waveform.frequency);
     printf("Amplitude:   %.2f\n", setup->waveform.amplitude);
     printf("Offset:      %.2f\n", setup->waveform.offset);
-    
     if (strcmp(setup->waveform.waveform_type, "arb") == 0) {
         printf("File:        %s\n", setup->waveform.arbitrary_file);
     }
     
-    const char *modes[] = {"DAC", "TERMINAL", "AUDIO", "FILE", "MULTI"};
     printf("\nOUTPUT CONFIGURATION:\n");
     printf("Mode:        %s\n", modes[setup->output.output_mode]);
     printf("Sample Rate: %d Hz\n", setup->output.sample_rate);
@@ -345,7 +352,11 @@ void keyboard_read_arrow(char *key, int *up, int *down, int *left, int *right) {
 void keyboard_input_loop(setup_t *setup) {
     char key = 0;
     int up = 0, down = 0, left = 0, right = 0;
+    char buffer[32];
+    double new_freq, new_amp, new_off;
+    setup_t *loaded;
        
+    /* 2. Executable code begins */
     keyboard_init();
     
     while (1) {
@@ -420,9 +431,8 @@ void keyboard_input_loop(setup_t *setup) {
         else if (key == 'f' || key == 'F') {
             printf("\nEnter frequency (Hz, 0.01-20000): ");
             fflush(stdout);
-            char buffer[32];
             if (fgets(buffer, sizeof(buffer), stdin)) {
-                double new_freq = atof(buffer);
+                new_freq = atof(buffer);
                 if (new_freq >= 0.01 && new_freq <= 20000) {
                     setup->waveform.frequency = new_freq;
                     printf("Frequency set to %.2f Hz\n", setup->waveform.frequency);
@@ -437,9 +447,8 @@ void keyboard_input_loop(setup_t *setup) {
         else if (key == 'a' || key == 'A') {
             printf("\nEnter amplitude (0.0-1.0): ");
             fflush(stdout);
-            char buffer[32];
             if (fgets(buffer, sizeof(buffer), stdin)) {
-                double new_amp = atof(buffer);
+                new_amp = atof(buffer);
                 if (new_amp >= 0.0 && new_amp <= 1.0) {
                     setup->waveform.amplitude = new_amp;
                     printf("Amplitude set to %.2f\n", setup->waveform.amplitude);
@@ -454,9 +463,8 @@ void keyboard_input_loop(setup_t *setup) {
         else if (key == 'o' || key == 'O') {
             printf("\nEnter offset (-1.0 to 1.0): ");
             fflush(stdout);
-            char buffer[32];
             if (fgets(buffer, sizeof(buffer), stdin)) {
-                double new_off = atof(buffer);
+                new_off = atof(buffer);
                 if (new_off >= -1.0 && new_off <= 1.0) {
                     setup->waveform.offset = new_off;
                     printf("Offset set to %.2f\n", setup->waveform.offset);
@@ -473,7 +481,7 @@ void keyboard_input_loop(setup_t *setup) {
             printf("\nConfiguration saved to keyboard_settings.dat\n");
         }
         else if (key == 'l' || key == 'L') {
-            setup_t *loaded = load_config_file("keyboard_settings.dat");
+            loaded = load_config_file("keyboard_settings.dat");
             if (loaded && loaded->is_valid) {
                 *setup = *loaded;
                 free_setup(loaded);
@@ -487,7 +495,7 @@ void keyboard_input_loop(setup_t *setup) {
             break;
         }
         
-        usleep(50000);  // 50ms delay
+        usleep(50000); /* 50ms delay */
     }
     
     keyboard_restore();

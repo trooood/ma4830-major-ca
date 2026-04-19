@@ -114,24 +114,28 @@ int generateArbitrary(int *wave_buffer, const char *filename, double amplitude, 
     FILE *file;
     int i = 0;
     double val;
+    int min_val, max_val, range, pos_shift;
+    int j, k, idx, mul_time, index;
+    float mul_val;
+    unsigned int temp_buffer[STEPS];
 
+    /* 2. Executable code begins */
     file = fopen(filename, "r");
     if (file == NULL) {
         printf("Error: File %s not found. Loading Sine instead.\n", filename);
-        generateSine(wave_buffer, 1.0, 0.0);
+        generateSine((unsigned int*)wave_buffer, 1.0, 0.0);
         return STEPS;
     }
 
-    while (i < STEPS && fscanf(file, "%d", &wave_buffer[i]) != EOF) {  // this part should go into a temp buffer
-        //if (wave_buffer[i] > MAX_VAL) wave_buffer[i] = MAX_VAL;
+    while (i < STEPS && fscanf(file, "%d", &wave_buffer[i]) != EOF) {
         i++;
     }
     fclose(file);
 
-    int min_val = wave_buffer[0];
-    int max_val = wave_buffer[0];
-
-    for (int j = 0; j < i; j++) {  // find max and min of file values
+    min_val = wave_buffer[0];
+    max_val = wave_buffer[0];
+    
+    for (j = 0; j < i; j++) {
         if (wave_buffer[j] < min_val) {
             min_val = wave_buffer[j];
         }
@@ -140,81 +144,49 @@ int generateArbitrary(int *wave_buffer, const char *filename, double amplitude, 
         }
     }
 
-    // printf("min = %d\n", min_val);
-    // printf("max = %d\n", max_val);
-    // printf("MAX_VAL = %d\n", MAX_VAL);
+    range = max_val - min_val;
+    mul_val = (float)MAX_VAL / range;
 
-    int range = max_val - min_val;
-    float mul_val = (float)MAX_VAL / range;
-
-    // if there are -ve numbers, push them to positive
     if (min_val < 0) {
-        int pos_shift = -min_val;
-        for (int j = 0; j < i; j++) {
+        pos_shift = -min_val;
+        for (j = 0; j < i; j++) {
             wave_buffer[j] += pos_shift;
         }
-        
     }
 
-    // printf("\nwave_buffer contents (%d elements):\n", STEPS);
-    for (int idx = 0; idx < STEPS; idx++) {
+    for (idx = 0; idx < STEPS; idx++) {
         printf("wave_buffer[%d] = %u\n", idx, wave_buffer[idx]);
     }
 
-    // rescale (amp)
-    for (int j = 0; j < i; j++) {
-        wave_buffer[j] = (unsigned int)floorf(wave_buffer[j] * mul_val);
+    /* Fixed floorf to floor */
+    for (j = 0; j < i; j++) {
+        wave_buffer[j] = (unsigned int)floor(wave_buffer[j] * mul_val);
     }
 
-
-    // rescale (time)
     arb_steps = i;
-    // printf("Found %d samples from file\n", arb_steps);
+    mul_time = STEPS / arb_steps;
 
-    int mul_time = STEPS / arb_steps;  // get the quotient
-    if (mul_time > 1) {  // samples need to be stretched
-        unsigned int temp_buffer[STEPS];
-
-        for (int j = 0; j < arb_steps; j++) {  // move stuff into wave_buffer to temp_buffer
+    if (mul_time > 1) {
+        for (j = 0; j < arb_steps; j++) {
             temp_buffer[j] = wave_buffer[j];
         }
-        for (int j = 0; j < STEPS; j++) {  // clear wave_buffer
+        for (j = 0; j < STEPS; j++) {
             wave_buffer[j] = 0;
         }
 
-        //arb_steps = i*mul_time;
-        // printf("Extending data to %d steps\n", STEPS);
-        // printf("Wavelength increased by %d times\n", mul_time);
-
-        // Repeat each sample mul_time times
-        int index = 0;
-        for (int j = 0; j < arb_steps; j++) {
-            for (int k = 0; k < mul_time; k++) {
+        index = 0;
+        for (j = 0; j < arb_steps; j++) {
+            for (k = 0; k < mul_time; k++) {
                 wave_buffer[index++] = temp_buffer[j];
-                //printf("j = %d, k = %d", j, k);
             }
         }
-
-        // for debugging buffer (comment this out when output gets fixed)
-        /*
-        printf("\nwave_buffer contents (%d elements):\n", STEPS);
-        for (int idx = 0; idx < STEPS; idx++) {
-            printf("wave_buffer[%d] = %u\n", idx, wave_buffer[idx]);
-        }
-        */
-
         arb_steps = STEPS;
     }
 
-    //printf("offset = %f\n", offset);
-    //printf("amplitude = %f\n", amplitude);
-
-    // handle amplitude and offset differently
-    for (i=0; i < arb_steps; i++) {
+    for (i = 0; i < arb_steps; i++) {
         val = wave_buffer[i];
-        val = (offset * MAX_VAL) + (amplitude * val);  // this is rescaled because the wave file is in the range [0,MAX_VAL] and not [-1,1]
-        wave_buffer[i] = val;
-
+        val = (offset * MAX_VAL) + (amplitude * val);
+        wave_buffer[i] = (int)val;
     }
 
     return arb_steps;
