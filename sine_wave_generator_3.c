@@ -140,9 +140,9 @@ int generateArbitrary(int *wave_buffer, const char *filename, double amplitude, 
         }
     }
 
-    printf("min = %d\n", min_val);
-    printf("max = %d\n", max_val);
-    printf("MAX_VAL = %d\n", MAX_VAL);
+    // printf("min = %d\n", min_val);
+    // printf("max = %d\n", max_val);
+    // printf("MAX_VAL = %d\n", MAX_VAL);
 
     int range = max_val - min_val;
     float mul_val = (float)MAX_VAL / range;
@@ -156,7 +156,7 @@ int generateArbitrary(int *wave_buffer, const char *filename, double amplitude, 
         
     }
 
-    printf("\nwave_buffer contents (%d elements):\n", STEPS);
+    // printf("\nwave_buffer contents (%d elements):\n", STEPS);
     for (int idx = 0; idx < STEPS; idx++) {
         printf("wave_buffer[%d] = %u\n", idx, wave_buffer[idx]);
     }
@@ -169,7 +169,7 @@ int generateArbitrary(int *wave_buffer, const char *filename, double amplitude, 
 
     // rescale (time)
     arb_steps = i;
-    printf("Found %d samples from file\n", arb_steps);
+    // printf("Found %d samples from file\n", arb_steps);
 
     int mul_time = STEPS / arb_steps;  // get the quotient
     if (mul_time > 1) {  // samples need to be stretched
@@ -183,8 +183,8 @@ int generateArbitrary(int *wave_buffer, const char *filename, double amplitude, 
         }
 
         //arb_steps = i*mul_time;
-        printf("Extending data to %d steps\n", STEPS);
-        printf("Wavelength increased by %d times\n", mul_time);
+        // printf("Extending data to %d steps\n", STEPS);
+        // printf("Wavelength increased by %d times\n", mul_time);
 
         // Repeat each sample mul_time times
         int index = 0;
@@ -217,65 +217,65 @@ int generateArbitrary(int *wave_buffer, const char *filename, double amplitude, 
 
     }
 
-    //return i;
+    return arb_steps;
 }
 
-// ------------------------ Main Function ------------------------
-int main(int argc, char *argv[]) {
-    char *type = (argc > 1) ? argv[1] : "sine";
+// // ------------------------ Main Function ------------------------
+// int main(int argc, char *argv[]) {
+//     char *type = (argc > 1) ? argv[1] : "sine";
     
-    double amplitude = (argc > 2) ? atof(argv[2]) : 1.0; // default full scale
-    double offset    = (argc > 3) ? atof(argv[3]) : 0.0; // default mid
+//     double amplitude = (argc > 2) ? atof(argv[2]) : 1.0; // default full scale
+//     double offset    = (argc > 3) ? atof(argv[3]) : 0.0; // default mid
 
-    int valid = 1;
+//     int valid = 1;
 
-    if (strcmp(type, "sine") == 0) generateSine(wave_buffer, amplitude, offset);
-    else if (strcmp(type, "square") == 0) generateSquare(wave_buffer, amplitude, offset);
-    else if (strcmp(type, "tri") == 0) generateTriangular(wave_buffer, amplitude, offset);
-    else if (strcmp(type, "saw") == 0) generateSawtooth(wave_buffer, amplitude, offset);
-    else if (strcmp(type, "arb") == 0) {
-        char *file = "wave.txt";  // default filename
+//     if (strcmp(type, "sine") == 0) generateSine(wave_buffer, amplitude, offset);
+//     else if (strcmp(type, "square") == 0) generateSquare(wave_buffer, amplitude, offset);
+//     else if (strcmp(type, "tri") == 0) generateTriangular(wave_buffer, amplitude, offset);
+//     else if (strcmp(type, "saw") == 0) generateSawtooth(wave_buffer, amplitude, offset);
+//     else if (strcmp(type, "arb") == 0) {
+//         char *file = "wave.txt";  // default filename
 
-        for (int i = 1; i < argc; i++) {
-            if (strstr(argv[i], ".txt") != NULL) {
-                file = argv[i];
-                break;
-            }
-        }
+//         for (int i = 1; i < argc; i++) {
+//             if (strstr(argv[i], ".txt") != NULL) {
+//                 file = argv[i];
+//                 break;
+//             }
+//         }
 
-        // for arb args, the argument index is now 3 and 4
-        double amplitude = (argc > 3) ? atof(argv[3]) : 1.0; // default full scale
-        double offset    = (argc > 4) ? atof(argv[4]) : 0.0; // default mid
+//         // for arb args, the argument index is now 3 and 4
+//         double amplitude = (argc > 3) ? atof(argv[3]) : 1.0; // default full scale
+//         double offset    = (argc > 4) ? atof(argv[4]) : 0.0; // default mid
 
-        generateArbitrary(wave_buffer, file, amplitude, offset);
-    }
-    else {
-        printf("Error: Unknown waveform '%s'. Program will exit.\n", type);
-        valid = 0;
-    }
+//         generateArbitrary(wave_buffer, file, amplitude, offset);
+//     }
+//     else {
+//         printf("Error: Unknown waveform '%s'. Program will exit.\n", type);
+//         valid = 0;
+//     }
 
-    if (valid) {
-        printf("Waveform '%s' initialized in buffer.\n", type);
-        int delay_us = 1000;
+//     if (valid) {
+//         printf("Waveform '%s' initialized in buffer.\n", type);
+//         int delay_us = 1000;
 
-        if (strcmp(type, "arb") == 0) {
-            int cycle_length = (strcmp(type, "arb") == 0) ? arb_steps : STEPS;
-            while (1) {
-                for (int i = 0; i < cycle_length; i++) {
-                    printf("Output: %u\n", wave_buffer[i]);
-                    usleep(delay_us);
-                }
-            }
-        }
+//         if (strcmp(type, "arb") == 0) {
+//             int cycle_length = (strcmp(type, "arb") == 0) ? arb_steps : STEPS;
+//             while (1) {
+//                 for (int i = 0; i < cycle_length; i++) {
+//                     printf("Output: %u\n", wave_buffer[i]);
+//                     usleep(delay_us);
+//                 }
+//             }
+//         }
 
-        while (1) {
-            for (int i = 0; i < STEPS; i++) {
-                printf("Output: %u\n", wave_buffer[i]);
-                usleep(delay_us);
-            }
-        }
-    }
+//         while (1) {
+//             for (int i = 0; i < STEPS; i++) {
+//                 printf("Output: %u\n", wave_buffer[i]);
+//                 usleep(delay_us);
+//             }
+//         }
+//     }
 
-    return 0;
-}
+//     return 0;
+// }
 

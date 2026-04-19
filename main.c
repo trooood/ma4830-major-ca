@@ -47,6 +47,7 @@ typedef struct {
     int    params_changed;   // dirty flag
     int    running;          //0 = shutdown
     pthread_mutex_t lock;
+    int    input_mode;       /* 1 = display thread pauses */
 } State;
  
 // Globals
@@ -89,6 +90,10 @@ void *wave_thread(void *arg)
  
     while (state.running) {
         // Copy params under lock (short critical section)
+        if (state.input_mode) {
+            usleep(100000);
+            continue;
+        }
         pthread_mutex_lock(&state.lock);
         local_type = state.wave_type;
         local_freq = state.frequency;
@@ -118,7 +123,7 @@ void *wave_thread(void *arg)
                     arb_count = STEPS;
                     break;
                 case WAVE_ARB:
-                    arb_count = generateArbitrary(buf, state.arb_file);
+                    arb_count = generateArbitrary((int*)buf, state.arb_file, local_amp, local_off);
                     if (arb_count <= 0) {
                         generateSine(buf, local_amp, local_off);
                         arb_count = STEPS;
@@ -174,6 +179,10 @@ void *display_thread(void *arg)
     hide_cursor();
 
     while (state.running) {
+        if (state.input_mode) {
+            usleep(100000);
+            continue;
+        }
         pthread_mutex_lock(&state.lock);
         local_type    = state.wave_type;
         local_freq    = state.frequency;
@@ -225,6 +234,9 @@ int wave_type_from_string(const char *s)
     setup_t *loaded;
     char key;
     int up, down, left, right;
+    char input_buf[32];
+    double input_val;
+    const char *wnames[] = {"sine", "square", "tri", "saw", "arb"};
 
     // Default state
     state.wave_type      = WAVE_SINE;
@@ -234,6 +246,7 @@ int wave_type_from_string(const char *s)
     strcpy(state.arb_file, "wave.txt");
     state.params_changed = 1;      // force first buffer to generate
     state.running        = 1;
+    state.input_mode     = 0;
     pthread_mutex_init(&state.lock, NULL);
  
     cfg = parse_command_line(argc, argv);
@@ -331,10 +344,75 @@ int wave_type_from_string(const char *s)
                 state.wave_type = WAVE_ARB;
                 state.params_changed = 1;
             }
-            
+            //would have been better if alicia had refactored
+            else if (key == 'f') {
+                state.input_mode = 1;
+                pthread_mutex_unlock(&state.lock);
+                keyboard_restore();
+                show_cursor();
+                printf("\nEnter frequency (0.01-20000 Hz): ");
+                fflush(stdout);
+                if (fgets(input_buf, sizeof(input_buf), stdin)) {
+                    input_val = atof(input_buf);
+                    if (input_val >= 0.01 && input_val <= 20000)
+                        state.frequency = input_val;
+                    else {
+                        printf("Invalid input. Press Enter to continue...");
+                        fgets(input_buf, sizeof(input_buf), stdin);
+                    }
+                }
+                state.params_changed = 1;
+                hide_cursor();
+                keyboard_init();
+                state.input_mode = 0;
+                continue;
+            }
+            else if (key == 'a') {
+                state.input_mode = 1;
+                pthread_mutex_unlock(&state.lock);
+                keyboard_restore();
+                show_cursor();
+                printf("\nEnter amplitude (0.0-1.0): ");
+                fflush(stdout);
+                if (fgets(input_buf, sizeof(input_buf), stdin)) {
+                    input_val = atof(input_buf);
+                    if (input_val >= 0.0 && input_val <= 1.0)
+                        state.amplitude = input_val;
+                    else {
+                        printf("Invalid input. Press Enter to continue...");
+                        fgets(input_buf, sizeof(input_buf), stdin);
+                    }
+                }
+                state.params_changed = 1;
+                hide_cursor();
+                keyboard_init();
+                state.input_mode = 0;
+                continue;
+            }
+            else if (key == 'o') {
+                state.input_mode = 1;
+                pthread_mutex_unlock(&state.lock);
+                keyboard_restore();
+                show_cursor();
+                printf("\nEnter offset (-1.0 to 1.0): ");
+                fflush(stdout);
+                if (fgets(input_buf, sizeof(input_buf), stdin)) {
+                    input_val = atof(input_buf);
+                    if (input_val >= -1.0 && input_val <= 1.0)
+                        state.offset = input_val;
+                    else {
+                        printf("Invalid input. Press Enter to continue...");
+                        fgets(input_buf, sizeof(input_buf), stdin);
+                    }
+                }
+                state.params_changed = 1;
+                hide_cursor();
+                keyboard_init();
+                state.input_mode = 0;
+                continue;
+            }
             // Save/Load
             else if (key == 's') {
-                const char *wnames[] = {"sine", "square", "tri", "saw", "arb"};
                 strcpy(save.waveform.waveform_type, wnames[state.wave_type]);
                 save.waveform.frequency = state.frequency;
                 save.waveform.amplitude = state.amplitude;
@@ -363,6 +441,19 @@ int wave_type_from_string(const char *s)
 
             pthread_mutex_unlock(&state.lock);
         }
+        #ifdef __QNX__
+        /* Potentiometer control (Qihong) */
+        {
+            unsigned short adc0;
+            float pot_amp;
+            adc0 = read_adc(&dev, 0);
+            pot_amp = (float)adc0 / 65535.0f;
+            pthread_mutex_lock(&state.lock);
+            state.amplitude = pot_amp;
+            state.params_changed = 1;
+            pthread_mutex_unlock(&state.lock);
+        }
+        #endif
 
         usleep(20000);  // 20ms poll rate
     }

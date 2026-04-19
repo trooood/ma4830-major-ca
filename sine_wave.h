@@ -14,6 +14,6 @@ void generateTriangular(unsigned int *buf, double amplitude, double offset);
 void generateSawtooth(unsigned int *buf, double amplitude, double offset);
 
 /* Returns number of samples actually loaded (may be < STEPS) */
-int  generateArbitrary(unsigned int *buf, const char *filename);
+int generateArbitrary(int *buf, const char *filename, double amplitude, double offset);
 
 #endif 

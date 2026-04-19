@@ -31,6 +31,27 @@ void hw_close(Device *d) {
     pci_detach_device(d->hdl);
 }
 
+unsigned short read_adc(Device *d, unsigned short channel) {
+    unsigned short adc_val;
+    unsigned short chan_config;
+    chan_config = 0x0D00 | ((channel & 0x0F) << 4) | (channel & 0x0F);
+    out16(d->iobase[1] + 2, chan_config);
+    out16(d->iobase[2] + 2, 0);
+    delay(1);
+    out16(d->iobase[2] + 0, 0);
+    while(!(in16(d->iobase[1] + 2) & 0x4000));
+    adc_val = in16(d->iobase[2] + 0);
+    return adc_val;
+}
+
+void reset_dac(Device *d) {
+    out16(d->iobase[1] + 8, 0x0a23);
+    out16(d->iobase[4] + 2, 0);
+    out16(d->iobase[4] + 0, 0x8FFF);
+    out16(d->iobase[1] + 8, 0x0a43);
+    out16(d->iobase[4] + 2, 0);
+    out16(d->iobase[4] + 0, 0x8FFF);
+}
 #else
 /* ---- MOCK HARDWARE CODE (Runs on Windows/Linux locally) ---- */
 
@@ -44,8 +65,8 @@ void hw_dac(Device *d, int chan, unsigned short val) {
     static int count = 0;
     (void)d; (void)chan;
     /* Print every 307th sample (prime number avoids aliasing with 100-sample cycle) */
-    if (count++ % 307 == 0)
-        printf("[MOCK DAC] #%d val=%u\n", count, val);
+    /* if (count++ % 307 == 0)
+        printf("[MOCK DAC] #%d val=%u\n", count, val); */
 }
 
 void hw_close(Device *d) {
