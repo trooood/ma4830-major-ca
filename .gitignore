@@ -1,3 +1,5 @@
 *.exe
 sandbox/
 settings.dat
+*.py
+\!*
