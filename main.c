@@ -493,3 +493,4 @@ int wave_type_from_string(const char *s)
  
     return 0;
 }
+// Optional:Trigger / wait for signal (novelty)

@@ -49,3 +49,5 @@ wave.txt / wave1.txt / wave2.txt / wave3.txt  - Arbitrary waveform data
 ### Left TODO
 - analog switch reading for wave type cycling (DIO)
 - hardware graceful termination via switch
+- Optional:Trigger / wait for signal (novelty)
+- Optional: Get schematics or else we need to handdraw it
