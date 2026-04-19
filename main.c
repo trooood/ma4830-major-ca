@@ -320,16 +320,17 @@ int wave_type_from_string(const char *s)
             else if (key == '5') { state.wave_type = WAVE_ARB;     state.params_changed = 1; }
 
             // THINKING IF WE WANNA DO MID SWAP FILES; RN IS HARDCODED NAMES, CAN GO TO SCAN FOR ALL TXT IF WE WANT TO
-            // else if (key == 'w') {
-            //     if (strcmp(state.arb_file, "wave.txt") == 0)
-            //         strcpy(state.arb_file, "wave1.txt");
-            //     else if (strcmp(state.arb_file, "wave1.txt") == 0)
-            //         strcpy(state.arb_file, "wave2.txt");
-            //     else
-            //         strcpy(state.arb_file, "wave.txt");
-            //     state.wave_type = WAVE_ARB;
-            //     state.params_changed = 1;
-            // }
+            //TRUDYMISHA AND JAZ NEEDS TO FIX ARBITARY
+            else if (key == 'w') {
+                if (strcmp(state.arb_file, "wave.txt") == 0)
+                    strcpy(state.arb_file, "wave1.txt");
+                else if (strcmp(state.arb_file, "wave1.txt") == 0)
+                    strcpy(state.arb_file, "wave2.txt");
+                else
+                    strcpy(state.arb_file, "wave.txt");
+                state.wave_type = WAVE_ARB;
+                state.params_changed = 1;
+            }
             
             // Save/Load
             else if (key == 's') {
