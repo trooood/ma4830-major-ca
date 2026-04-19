@@ -38,6 +38,10 @@
 #define WAVE3 DATA_DIR "wave3.txt"
 
 
+/* Flag to enable termination via hardware switch (1 = true, 0 = false) */
+static int enable_switch_terminate = 0;
+
+
 /* ---- Wave type enum ---- */
 #define WAVE_SINE   0
 #define WAVE_SQUARE 1
@@ -475,10 +479,18 @@ int wave_type_from_string(const char *s)
             pthread_mutex_unlock(&state.lock);
         }
         #ifdef __QNX__
-        /* Potentiometer control (Qihong) */
+        /* Potentiometer control and switch termination */
         {
             unsigned short adc0;
             float pot_amp;
+            
+            /* Hardware termination path */
+            if (enable_switch_terminate && hw_read_switch(&dev)) {
+                pthread_mutex_lock(&state.lock);
+                state.running = 0;
+                pthread_mutex_unlock(&state.lock);
+            }
+
             adc0 = read_adc(&dev, 0);
             pot_amp = (float)adc0 / 65535.0f;
             pthread_mutex_lock(&state.lock);
