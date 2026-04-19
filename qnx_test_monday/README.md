@@ -3,7 +3,7 @@
 
 ### Compile
 ```
-cc -Wall -o wavegen main.c hw.c sine_wave_generator_3.c ui_graphics.c setup_input.c -lm
+make
 ```
 
 ### Run
