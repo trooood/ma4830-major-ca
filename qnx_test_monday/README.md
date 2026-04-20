@@ -3,6 +3,7 @@
 
 ### Compile
 ```
+make clean //if built before
 make
 ```
 
@@ -48,4 +49,3 @@ wave.txt / wave1.txt / wave2.txt / wave3.txt  - Arbitrary waveform data
 
 ### Left TODO
 - Optional:Trigger / wait for signal (novelty)
-- Optional: Get schematics or else we need to handdraw it
