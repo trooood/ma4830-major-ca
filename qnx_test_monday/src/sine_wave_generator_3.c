@@ -115,7 +115,8 @@ int generateArbitrary(int *wave_buffer, const char *filename, double amplitude, 
     int i = 0;
     double val;
     int min_val, max_val, range, pos_shift;
-    int j, k, idx, mul_time, index;
+    int j, k, mul_time, index;
+    //int idx;
     float mul_val;
     unsigned int temp_buffer[STEPS];
 
@@ -154,9 +155,9 @@ int generateArbitrary(int *wave_buffer, const char *filename, double amplitude, 
         }
     }
 
-    for (idx = 0; idx < STEPS; idx++) {
-        printf("wave_buffer[%d] = %u\n", idx, wave_buffer[idx]);
-    }
+    //for (idx = 0; idx < STEPS; idx++) {
+    //    printf("wave_buffer[%d] = %u\n", idx, wave_buffer[idx]);
+    //}
 
     /* Fixed floorf to floor */
     for (j = 0; j < i; j++) {

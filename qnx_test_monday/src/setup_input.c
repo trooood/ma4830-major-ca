@@ -7,7 +7,7 @@ int validate_setup(setup_t *setup);
 // default values
 static void apply_defaults(setup_t *setup) {
     strcpy(setup->waveform.waveform_type, "sine");
-    setup->waveform.frequency = 440.0;
+    setup->waveform.frequency = 5.0;
     setup->waveform.amplitude = 1.0;
     setup->waveform.offset = 0.0;
     strcpy(setup->waveform.arbitrary_file, "data/wave.txt");
@@ -193,9 +193,9 @@ int validate_setup(setup_t *setup) {
         fclose(test);
     }
     
-    if (setup->waveform.frequency < 0.01 || setup->waveform.frequency > 20000) {
+    if (setup->waveform.frequency < 0.01 || setup->waveform.frequency > 10) {
         setup->is_valid = 0;
-        sprintf(setup->error_message, "Frequency out of range: %.2f Hz (0.01-20000)", 
+        sprintf(setup->error_message, "Frequency out of range: %.2f Hz (0.01-10)", 
                 setup->waveform.frequency);
         return 0;
     }
@@ -290,6 +290,8 @@ void keyboard_read_arrow(char *key, int *up, int *down, int *left, int *right) {
 // KEYBOARD INPUT FUNCTIONS 
 #include <termios.h>
 #include <fcntl.h>
+#include<sys/ioctl.h>
+#include<unistd.h>
 
 static struct termios orig_termios;
 
@@ -300,7 +302,7 @@ void keyboard_init(void) {
     raw = orig_termios;
     
     // Disable canonical mode, echo, signals
-    raw.c_lflag &= ~(ICANON | ECHO | ISIG);
+    raw.c_lflag &= ~(ICANON | ECHO);
     raw.c_cc[VMIN] = 0;  // Non-blocking
     raw.c_cc[VTIME] = 0; // No timeout
     
@@ -364,7 +366,7 @@ void keyboard_input_loop(setup_t *setup) {
         
         if (up) {
             setup->waveform.frequency *= 1.1;
-            if (setup->waveform.frequency > 20000) setup->waveform.frequency = 20000;
+            if (setup->waveform.frequency > 10) setup->waveform.frequency = 10;
             printf("\rFrequency: %.2f Hz     ", setup->waveform.frequency);
             fflush(stdout);
         }
@@ -429,11 +431,11 @@ void keyboard_input_loop(setup_t *setup) {
             fflush(stdout);
         }
         else if (key == 'f' || key == 'F') {
-            printf("\nEnter frequency (Hz, 0.01-20000): ");
+            printf("\nEnter frequency (Hz, 0.01-10): ");
             fflush(stdout);
             if (fgets(buffer, sizeof(buffer), stdin)) {
                 new_freq = atof(buffer);
-                if (new_freq >= 0.01 && new_freq <= 20000) {
+                if (new_freq >= 0.01 && new_freq <= 10) {
                     setup->waveform.frequency = new_freq;
                     printf("Frequency set to %.2f Hz\n", setup->waveform.frequency);
                 } else {

@@ -3,3 +3,4 @@ sandbox/
 settings.dat
 *.py
 \!*
+.DS_Store
