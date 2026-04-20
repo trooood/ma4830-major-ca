@@ -48,6 +48,8 @@ typedef struct {
     int    running;          //0 = shutdown
     pthread_mutex_t lock;
     int    input_mode;       /* 1 = display thread pauses */
+    int paused;
+    int audio_enabled;
 } State;
  
 // Globals
@@ -99,6 +101,11 @@ void *wave_thread(void *arg)
             usleep(100000);
             continue;
         }
+        if (state.paused) {
+            usleep(50000);
+            continue;
+        }
+
         pthread_mutex_lock(&state.lock);
         local_type = state.wave_type;
         local_freq = state.frequency;
@@ -174,6 +181,11 @@ void *wave_thread(void *arg)
                 nanosleep(&ts, NULL);
             }
         #endif
+        /* Audio beep once per cycle */
+        if (state.audio_enabled) {
+            printf("\a");
+            fflush(stdout);
+        }
     }
     return NULL;
 }
@@ -219,9 +231,15 @@ void *display_thread(void *arg)
         ui.frequency = local_freq;
         ui.amplitude = local_amp;
         ui.mean      = local_off;
-        ui.running   = local_running;
-        ui.tick++;
-
+        ui.running   = state.paused ? 0 : local_running;
+        if (state.paused) {
+            strcpy(ui.last_message, "PAUSED - Press 'p' to start");
+            ui.running = 0;
+        } else {
+            strcpy(ui.last_message, "Running");
+            ui.running = local_running;
+            ui.tick++;
+        }
         render_ui(&ui);
 
         usleep(120000);  /* ~8 fps, matches Jaz's 120ms frame time */
@@ -244,9 +262,8 @@ int wave_type_from_string(const char *s)
     return WAVE_SINE;  // default fallback
 }
  //  
-//   TODO (Qihong):
-//     - add analog switch reading for wave type cycling
-//     - hardware graceful termination path
+//   Qihong: DIO switches and ADC potentiometer implemented in qnx_test_monday
+//   SW1=Run/Stop, SW2=ADC Amp, SW3=ADC Freq, SW4=Audio
 
  int main(int argc, char *argv[])
 {
@@ -255,20 +272,24 @@ int wave_type_from_string(const char *s)
     setup_t save;
     setup_t *loaded;
     char key;
+    char target;
     int up, down, left, right;
     char input_buf[32];
     double input_val;
     const char *wnames[] = {"sine", "square", "tri", "saw", "arb"};
 
+
     // Default state
     state.wave_type      = WAVE_SINE;
-    state.frequency      = 100.0;
+    state.frequency      = 10.0;
     state.amplitude      = 1.0;
     state.offset         = 0.0;
     strcpy(state.arb_file, "wave.txt");
     state.params_changed = 1;      // force first buffer to generate
     state.running        = 1;
     state.input_mode     = 0;
+    state.paused         = 1;      /* start paused for trigger mode */
+    state.audio_enabled  = 0;
     pthread_mutex_init(&state.lock, NULL);
  
     cfg = parse_command_line(argc, argv);
@@ -293,7 +314,21 @@ int wave_type_from_string(const char *s)
         printf("Hardware init failed. Check PCI device.\n");
         return 1;
     }
- 
+    /* TODO: Welcome screen (placeholder for Misha); to accept the different numbers to directly go to the waves */
+    printf("==============================================\n");
+    printf("   MA4830 WAVEFORM GENERATOR\n");
+    printf("   NULL TERMINATORS\n");
+    printf("==============================================\n");
+    printf("   1 - Sine    2 - Square    3 - Triangle\n");
+    printf("   4 - Sawtooth    5 - Arbitrary\n");
+    printf("   Or press Enter for default (Sine)\n");
+    printf("==============================================\n");
+    {
+        int ch = getchar();
+        if (ch >= '1' && ch <= '5')
+            state.wave_type = ch - '1';
+    }
+
     // Thread spawning
     pthread_create(&wave_tid, NULL, wave_thread, NULL);
     pthread_create(&disp_tid, NULL, display_thread, NULL);
@@ -312,7 +347,7 @@ int wave_type_from_string(const char *s)
 
             if (up) {
                 state.frequency *= 1.1;
-                if (state.frequency > 20000) state.frequency = 20000;
+                if (state.frequency > 10.0) state.frequency = 10.0;
                 state.params_changed = 1;
             }
             else if (down) {
@@ -368,68 +403,30 @@ int wave_type_from_string(const char *s)
                 state.wave_type = WAVE_ARB;
                 state.params_changed = 1;
             }
-            // TODO: would have been better if alicia can refactor
-            else if (key == 'f') {
+            else if (key == 'f' || key == 'a' || key == 'o') {
+                target = key;
                 state.input_mode = 1;
                 pthread_mutex_unlock(&state.lock);
                 keyboard_restore();
                 show_cursor();
-                printf("\nEnter frequency (0.01-20000 Hz): ");
-                fflush(stdout);
-                if (fgets(input_buf, sizeof(input_buf), stdin)) {
-                    input_val = atof(input_buf);
-                    if (input_val >= 0.01 && input_val <= 20000)
-                        state.frequency = input_val;
-                    else {
-                        printf("Invalid input. Press Enter to continue...");
-                        fgets(input_buf, sizeof(input_buf), stdin);
-                    }
-                }
+
+                if (target == 'f')
+                    input_val = safe_handling("\nEnter frequency (0.01-10.0 Hz): ",
+                                             0.01, 10, state.frequency);
+                else if (target == 'a')
+                    input_val = safe_handling("\nEnter amplitude (0.0-1.0): ",
+                                             0.0, 1.0, state.amplitude);
+                else
+                    input_val = safe_handling("\nEnter offset (-1.0 to 1.0): ",
+                                             -1.0, 1.0, state.offset);
+
+                pthread_mutex_lock(&state.lock);
+                if (target == 'f') state.frequency = input_val;
+                else if (target == 'a') state.amplitude = input_val;
+                else state.offset = input_val;
                 state.params_changed = 1;
-                hide_cursor();
-                keyboard_init();
-                state.input_mode = 0;
-                continue;
-            }
-            else if (key == 'a') {
-                state.input_mode = 1;
                 pthread_mutex_unlock(&state.lock);
-                keyboard_restore();
-                show_cursor();
-                printf("\nEnter amplitude (0.0-1.0): ");
-                fflush(stdout);
-                if (fgets(input_buf, sizeof(input_buf), stdin)) {
-                    input_val = atof(input_buf);
-                    if (input_val >= 0.0 && input_val <= 1.0)
-                        state.amplitude = input_val;
-                    else {
-                        printf("Invalid input. Press Enter to continue...");
-                        fgets(input_buf, sizeof(input_buf), stdin);
-                    }
-                }
-                state.params_changed = 1;
-                hide_cursor();
-                keyboard_init();
-                state.input_mode = 0;
-                continue;
-            }
-            else if (key == 'o') {
-                state.input_mode = 1;
-                pthread_mutex_unlock(&state.lock);
-                keyboard_restore();
-                show_cursor();
-                printf("\nEnter offset (-1.0 to 1.0): ");
-                fflush(stdout);
-                if (fgets(input_buf, sizeof(input_buf), stdin)) {
-                    input_val = atof(input_buf);
-                    if (input_val >= -1.0 && input_val <= 1.0)
-                        state.offset = input_val;
-                    else {
-                        printf("Invalid input. Press Enter to continue...");
-                        fgets(input_buf, sizeof(input_buf), stdin);
-                    }
-                }
-                state.params_changed = 1;
+
                 hide_cursor();
                 keyboard_init();
                 state.input_mode = 0;
@@ -463,6 +460,14 @@ int wave_type_from_string(const char *s)
                 state.running = 0;
             }
 
+            else if (key == 'p') {
+                state.paused = !state.paused;
+            }
+            else if (key == 'm') {
+                state.audio_enabled = !state.audio_enabled;
+                if (state.audio_enabled) printf("\a");
+                fflush(stdout);
+            }
             pthread_mutex_unlock(&state.lock);
         }
         #ifdef __QNX__

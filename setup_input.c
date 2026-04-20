@@ -4,10 +4,114 @@
 
 int validate_setup(setup_t *setup);
 
+// helper function for safe numeric input with retry
+double safe_handling(const char *prompt, double min, double max, double default_val) {
+    char buffer[64];
+    char *endptr;
+    double result;
+    int valid = 0;
+    size_t len;
+
+    
+    while (!valid) {
+        printf("%s", prompt);
+        fflush(stdout);
+        
+        if (fgets(buffer, sizeof(buffer), stdin) == NULL) {
+            printf("Input error. Using default: %.2f\n", default_val);
+            return default_val;
+        }
+        
+        len = strlen(buffer);        
+        if (len > 0 && buffer[len-1] == '\n') {
+            buffer[len-1] = '\0';
+        }
+        
+        // check if user just pressed Enter
+        if (strlen(buffer) == 0) {
+            printf("Using current value: %.2f\n", default_val);
+            return default_val;
+        }
+        
+        // strtod() for better error detection
+        result = strtod(buffer, &endptr);
+        
+        // check if conversion failed (no digits read)
+        if (endptr == buffer) {
+            printf("\aERROR: Invalid number. Please enter a valid number.\n");
+            continue;
+        }
+        
+        // check for extra characters after number
+        while (*endptr == ' ') endptr++;  // skip spaces
+        if (*endptr != '\0') {
+            printf("\aERROR: Extra characters detected: '%s'. Please enter only a number.\n", endptr);
+            continue;
+        }
+        
+        // check range
+        if (result < min || result > max) {
+            printf("\aERROR: Value must be between %.2f and %.2f. You entered: %.2f\n", min, max, result);
+            continue;
+        }
+        
+        valid = 1;
+    }
+    
+    return result;
+}
+
+// helper function for safe waveform type input with retry
+void safe_get_waveform_type(setup_t *setup) {
+    char buffer[32];
+    int valid = 0;
+    
+    while (!valid) {
+        printf("Enter waveform type (sine, square, tri, saw, arb): ");
+        fflush(stdout);
+        
+        if (fgets(buffer, sizeof(buffer), stdin) == NULL) {
+            printf("Input error. Keeping current: %s\n", setup->waveform.waveform_type);
+            return;
+        }
+        
+        // remove newline
+        size_t len = strlen(buffer);
+        if (len > 0 && buffer[len-1] == '\n') {
+            buffer[len-1] = '\0';
+        }
+        
+        // convert to lowercase
+        for (int i = 0; buffer[i]; i++) {
+            buffer[i] = tolower(buffer[i]);
+        }
+        
+        // check against valid types
+        if (strcmp(buffer, "sine") == 0) {
+            strcpy(setup->waveform.waveform_type, "sine");
+            valid = 1;
+        } else if (strcmp(buffer, "square") == 0) {
+            strcpy(setup->waveform.waveform_type, "square");
+            valid = 1;
+        } else if (strcmp(buffer, "tri") == 0) {
+            strcpy(setup->waveform.waveform_type, "tri");
+            valid = 1;
+        } else if (strcmp(buffer, "saw") == 0) {
+            strcpy(setup->waveform.waveform_type, "saw");
+            valid = 1;
+        } else if (strcmp(buffer, "arb") == 0) {
+            strcpy(setup->waveform.waveform_type, "arb");
+            valid = 1;
+        } else {
+            printf("ERROR: Invalid waveform type '%s'. Valid types: sine, square, tri, saw, arb\n", buffer);
+        }
+    }
+}
+
 // default values
 static void apply_defaults(setup_t *setup) {
     strcpy(setup->waveform.waveform_type, "sine");
-    setup->waveform.frequency = 440.0;
+    setup->waveform.frequency = 5.0;
     setup->waveform.amplitude = 1.0;
     setup->waveform.offset = 0.0;
     strcpy(setup->waveform.arbitrary_file, "wave.txt");

@@ -65,5 +65,6 @@ char keyboard_getch(void);
 int keyboard_kbhit(void);
 void keyboard_read_arrow(char *key, int *up, int *down, int *left, int *right);
 void interactive_input_loop(setup_t *setup);
+double safe_handling(const char *prompt, double min, double max, double default_val);
 
 #endif // SETUP_INPUT_H
