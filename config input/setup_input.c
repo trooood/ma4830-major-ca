@@ -590,17 +590,17 @@ void keyboard_input_loop(setup_t *setup) {
         }
         else if (key == 's' || key == 'S') {
             save_config_file("keyboard_settings.dat", setup);
-            printf("\n✓ Configuration saved to keyboard_settings.dat\n");
+            printf("\nConfiguration saved to keyboard_settings.dat\n");
         }
         else if (key == 'l' || key == 'L') {
             setup_t *loaded = load_config_file("keyboard_settings.dat");
             if (loaded && loaded->is_valid) {
                 *setup = *loaded;
                 free_setup(loaded);
-                printf("\n✓ Configuration loaded from keyboard_settings.dat\n");
+                printf("\nConfiguration loaded from keyboard_settings.dat\n");
                 print_setup_summary(setup);
             } else {
-                printf("\n✗ No saved configuration found\n");
+                printf("\nNo saved configuration found\n");
             }
         }
         else if (key == 'q' || key == 'Q') {
