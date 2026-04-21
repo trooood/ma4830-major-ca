@@ -281,9 +281,9 @@ int wave_type_from_string(const char *s)
 
     // Default state
     state.wave_type      = WAVE_SINE;
-    state.frequency      = 10.0;
-    state.amplitude      = 1.0;
-    state.offset         = 0.0;
+    state.frequency = FREQ_DEFAULT;
+    state.amplitude = AMP_DEFAULT;
+    state.offset    = OFF_DEFAULT;
     strcpy(state.arb_file, "wave.txt");
     state.params_changed = 1;      // force first buffer to generate
     state.running        = 1;
@@ -347,12 +347,12 @@ int wave_type_from_string(const char *s)
 
             if (up) {
                 state.frequency *= 1.1;
-                if (state.frequency > 10.0) state.frequency = 10.0;
+                if (state.frequency > FREQ_MAX) state.frequency = FREQ_MAX;
                 state.params_changed = 1;
             }
             else if (down) {
                 state.frequency /= 1.1;
-                if (state.frequency < 0.01) state.frequency = 0.01;
+                if (state.frequency < FREQ_MIN) state.frequency = FREQ_MIN;
                 state.params_changed = 1;
             }
             else if (right) {
@@ -365,22 +365,22 @@ int wave_type_from_string(const char *s)
             }
             else if (key == '+') {
                 state.amplitude += 0.05;
-                if (state.amplitude > 1.0) state.amplitude = 1.0;
+                if (state.amplitude > AMP_MAX) state.amplitude = AMP_MAX;
                 state.params_changed = 1;
             }
             else if (key == '-') {
                 state.amplitude -= 0.05;
-                if (state.amplitude < 0.0) state.amplitude = 0.0;
+                if (state.amplitude < AMP_MIN) state.amplitude = AMP_MIN;
                 state.params_changed = 1;
             }
             else if (key == ']') {
                 state.offset += 0.05;
-                if (state.offset > 1.0) state.offset = 1.0;
+                if (state.offset > OFF_MAX) state.offset = OFF_MAX;
                 state.params_changed = 1;
             }
             else if (key == '[') {
                 state.offset -= 0.05;
-                if (state.offset < -1.0) state.offset = -1.0;
+                if (state.offset < OFF_MIN) state.offset = OFF_MIN;
                 state.params_changed = 1;
             }
             else if (key == '1') { state.wave_type = WAVE_SINE;   state.params_changed = 1; }
@@ -412,13 +412,13 @@ int wave_type_from_string(const char *s)
 
                 if (target == 'f')
                     input_val = safe_handling("\nEnter frequency (0.01-10.0 Hz): ",
-                                             0.01, 10, state.frequency);
+                                             FREQ_MIN, FREQ_MAX, state.frequency);
                 else if (target == 'a')
                     input_val = safe_handling("\nEnter amplitude (0.0-1.0): ",
-                                             0.0, 1.0, state.amplitude);
+                                             AMP_MIN, AMP_MAX, state.amplitude);
                 else
                     input_val = safe_handling("\nEnter offset (-1.0 to 1.0): ",
-                                             -1.0, 1.0, state.offset);
+                                             OFF_MIN, OFF_MAX, state.offset);
 
                 pthread_mutex_lock(&state.lock);
                 if (target == 'f') state.frequency = input_val;
@@ -498,4 +498,3 @@ int wave_type_from_string(const char *s)
  
     return 0;
 }
-// Optional:Trigger / wait for signal (novelty)

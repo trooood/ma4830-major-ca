@@ -290,21 +290,21 @@ int validate_setup(setup_t *setup) {
         fclose(test);
     }
     
-    if (setup->waveform.frequency < 0.01 || setup->waveform.frequency > 20000) {
+    if (setup->waveform.frequency < FREQ_MIN || setup->waveform.frequency > FREQ_MAX) {
         setup->is_valid = 0;
-        sprintf(setup->error_message, "Frequency out of range: %.2f Hz (0.01-20000)", 
+        sprintf(setup->error_message, "Frequency out of range: %.2f Hz (0.01-10)", 
                 setup->waveform.frequency);
         return 0;
     }
     
-    if (setup->waveform.amplitude < 0 || setup->waveform.amplitude > 1) {
+    if (setup->waveform.amplitude < AMP_MIN || setup->waveform.amplitude > AMP_MAX) {
         setup->is_valid = 0;
         sprintf(setup->error_message, "Amplitude out of range: %.2f (0-1)", 
                 setup->waveform.amplitude);
         return 0;
     }
     
-    if (setup->waveform.offset < -1 || setup->waveform.offset > 1) {
+    if (setup->waveform.offset < OFF_MIN || setup->waveform.offset > OFF_MAX) {
         setup->is_valid = 0;
         sprintf(setup->error_message, "Offset out of range: %.2f (-1 to 1)", 
                 setup->waveform.offset);
@@ -457,13 +457,13 @@ void keyboard_input_loop(setup_t *setup) {
         
         if (up) {
             setup->waveform.frequency *= 1.1;
-            if (setup->waveform.frequency > 20000) setup->waveform.frequency = 20000;
+            if (setup->waveform.frequency > FREQ_MAX) setup->waveform.frequency = FREQ_MAX;
             printf("\rFrequency: %.2f Hz     ", setup->waveform.frequency);
             fflush(stdout);
         }
         else if (down) {
             setup->waveform.frequency /= 1.1;
-            if (setup->waveform.frequency < 0.01) setup->waveform.frequency = 0.01;
+            if (setup->waveform.frequency < FREQ_MAX) setup->waveform.frequency = FREQ_MAX;
             printf("\rFrequency: %.2f Hz     ", setup->waveform.frequency);
             fflush(stdout);
         }
@@ -499,35 +499,35 @@ void keyboard_input_loop(setup_t *setup) {
         }
         else if (key == '+') {
             setup->waveform.amplitude += 0.05;
-            if (setup->waveform.amplitude > 1.0) setup->waveform.amplitude = 1.0;
+            if (setup->waveform.amplitude > AMP_MAX) setup->waveform.amplitude = AMP_MAX;
             printf("\rAmplitude: %.2f     ", setup->waveform.amplitude);
             fflush(stdout);
         }
         else if (key == '-') {
             setup->waveform.amplitude -= 0.05;
-            if (setup->waveform.amplitude < 0.0) setup->waveform.amplitude = 0.0;
+            if (setup->waveform.amplitude < AMP_MIN) setup->waveform.amplitude = AMP_MIN;
             printf("\rAmplitude: %.2f     ", setup->waveform.amplitude);
             fflush(stdout);
         }
         else if (key == '[') {
             setup->waveform.offset -= 0.05;
-            if (setup->waveform.offset < -1.0) setup->waveform.offset = -1.0;
+            if (setup->waveform.offset < OFF_MIN) setup->waveform.offset = OFF_MIN;
             printf("\rOffset: %.2f     ", setup->waveform.offset);
             fflush(stdout);
         }
         else if (key == ']') {
             setup->waveform.offset += 0.05;
-            if (setup->waveform.offset > 1.0) setup->waveform.offset = 1.0;
+            if (setup->waveform.offset > OFF_MAX) setup->waveform.offset = OFF_MAX;
             printf("\rOffset: %.2f     ", setup->waveform.offset);
             fflush(stdout);
         }
         else if (key == 'f' || key == 'F') {
-            printf("\nEnter frequency (Hz, 0.01-20000): ");
+            printf("\nEnter frequency (Hz, 0.01-10): ");
             fflush(stdout);
             char buffer[32];
             if (fgets(buffer, sizeof(buffer), stdin)) {
                 double new_freq = atof(buffer);
-                if (new_freq >= 0.01 && new_freq <= 20000) {
+                if (new_freq >= FREQ_MAX && new_freq <= FREQ_MAX) {
                     setup->waveform.frequency = new_freq;
                     printf("Frequency set to %.2f Hz\n", setup->waveform.frequency);
                 } else {

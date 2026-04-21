@@ -12,6 +12,17 @@
 #include <unistd.h>
 #endif
 
+/* Hardware limits - single source of truth */
+#define FREQ_MIN     0.01
+#define FREQ_MAX     10.0
+#define FREQ_DEFAULT 5.0
+#define AMP_MIN      0.0
+#define AMP_MAX      1.0
+#define AMP_DEFAULT  1.0
+#define OFF_MIN     -1.0
+#define OFF_MAX      1.0
+#define OFF_DEFAULT  0.0
+
 // waveform configuration
 typedef struct {
     char waveform_type[32];     // sine, square, tri, saw, arb
