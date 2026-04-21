@@ -181,7 +181,8 @@ void *wave_thread(void *arg)
                 nanosleep(&ts, NULL);
             }
         #endif
-        /* Audio beep once per cycle */
+
+        // AUdio per cycle; may cause lag cuz printf is a slow ass bitch
         if (state.audio_enabled) {
             printf("\a");
             fflush(stdout);

@@ -111,9 +111,9 @@ void safe_get_waveform_type(setup_t *setup) {
 // default values
 static void apply_defaults(setup_t *setup) {
     strcpy(setup->waveform.waveform_type, "sine");
-    setup->waveform.frequency = 5.0;
-    setup->waveform.amplitude = 1.0;
-    setup->waveform.offset = 0.0;
+    setup->waveform.frequency = FREQ_DEFAULT;
+    setup->waveform.amplitude = AMP_DEFAULT;
+    setup->waveform.offset = OFF_DEFAULT;
     strcpy(setup->waveform.arbitrary_file, "wave.txt");
     
     setup->output.output_mode = 1;
@@ -463,7 +463,7 @@ void keyboard_input_loop(setup_t *setup) {
         }
         else if (down) {
             setup->waveform.frequency /= 1.1;
-            if (setup->waveform.frequency < FREQ_MAX) setup->waveform.frequency = FREQ_MAX;
+            if (setup->waveform.frequency < FREQ_MIN) setup->waveform.frequency = FREQ_MIN;
             printf("\rFrequency: %.2f Hz     ", setup->waveform.frequency);
             fflush(stdout);
         }
@@ -527,7 +527,7 @@ void keyboard_input_loop(setup_t *setup) {
             char buffer[32];
             if (fgets(buffer, sizeof(buffer), stdin)) {
                 double new_freq = atof(buffer);
-                if (new_freq >= FREQ_MAX && new_freq <= FREQ_MAX) {
+                if (new_freq >= FREQ_MIN && new_freq <= FREQ_MAX) {
                     setup->waveform.frequency = new_freq;
                     printf("Frequency set to %.2f Hz\n", setup->waveform.frequency);
                 } else {
@@ -544,7 +544,7 @@ void keyboard_input_loop(setup_t *setup) {
             char buffer[32];
             if (fgets(buffer, sizeof(buffer), stdin)) {
                 double new_amp = atof(buffer);
-                if (new_amp >= 0.0 && new_amp <= 1.0) {
+                if (new_amp >= AMP_MIN && new_amp <= AMP_MAX) {
                     setup->waveform.amplitude = new_amp;
                     printf("Amplitude set to %.2f\n", setup->waveform.amplitude);
                 } else {
@@ -561,7 +561,7 @@ void keyboard_input_loop(setup_t *setup) {
             char buffer[32];
             if (fgets(buffer, sizeof(buffer), stdin)) {
                 double new_off = atof(buffer);
-                if (new_off >= -1.0 && new_off <= 1.0) {
+                if (new_off >= OFF_MIN && new_off <= OFF_MAX) {
                     setup->waveform.offset = new_off;
                     printf("Offset set to %.2f\n", setup->waveform.offset);
                 } else {
