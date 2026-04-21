@@ -111,7 +111,7 @@ void safe_get_waveform_type(setup_t *setup) {
 
 static void apply_defaults(setup_t *setup) {
     strcpy(setup->waveform.waveform_type, "sine");
-    setup->waveform.frequency = 440.0;
+    setup->waveform.frequency = 5.0;
     setup->waveform.amplitude = 1.0;
     setup->waveform.offset = 0.0;
     strcpy(setup->waveform.arbitrary_file, "wave.txt");
@@ -350,9 +350,9 @@ int validate_setup(setup_t *setup) {
         fclose(test);
     }
     
-    if (setup->waveform.frequency < 0.01 || setup->waveform.frequency > 20000) {
+    if (setup->waveform.frequency < 0.01 || setup->waveform.frequency > 10) {
         setup->is_valid = 0;
-        sprintf(setup->error_message, "Frequency out of range: %.2f Hz (0.01-20000)", 
+        sprintf(setup->error_message, "Frequency out of range: %.2f Hz (0.01-10)", 
                 setup->waveform.frequency);
         return 0;
     }
@@ -489,7 +489,7 @@ void keyboard_input_loop(setup_t *setup) {
         
         if (up) {
             setup->waveform.frequency *= 1.1;
-            if (setup->waveform.frequency > 20000) setup->waveform.frequency = 20000;
+            if (setup->waveform.frequency > 10) setup->waveform.frequency = 10;
             printf("\rFrequency: %.2f Hz     ", setup->waveform.frequency);
             fflush(stdout);
         }
@@ -557,8 +557,8 @@ void keyboard_input_loop(setup_t *setup) {
             // temporarily exit raw mode for input
             keyboard_restore();
             printf("\n");
-            double new_freq = safe_handling("Enter frequency (Hz, 0.01-20000): ", 
-                                               0.01, 20000.0, setup->waveform.frequency);
+            double new_freq = safe_handling("Enter frequency (Hz, 0.01-10): ", 
+                                               0.01, 10.0, setup->waveform.frequency);
             setup->waveform.frequency = new_freq;
             printf("Frequency set to %.2f Hz\n", setup->waveform.frequency);
             // re-enter raw mode
