@@ -182,11 +182,6 @@ void *wave_thread(void *arg)
             }
         #endif
 
-        // AUdio per cycle; may cause lag cuz printf is a slow ass bitch
-        if (state.audio_enabled) {
-            printf("\a");
-            fflush(stdout);
-        }
     }
     return NULL;
 }
@@ -242,7 +237,12 @@ void *display_thread(void *arg)
             ui.tick++;
         }
         render_ui(&ui);
-
+        
+        // Audio beep moved to UI thread to protect DAC timing
+        if (state.audio_enabled && !state.paused) {
+            printf("\a");
+            fflush(stdout);
+        }
         usleep(120000);  /* ~8 fps, matches Jaz's 120ms frame time */
     }
 
@@ -328,6 +328,9 @@ int wave_type_from_string(const char *s)
         int ch = getchar();
         if (ch >= '1' && ch <= '5')
             state.wave_type = ch - '1';
+            
+        /*Flush leftover newline to prevent phantom keypresses */
+        while ((ch = getchar()) != '\n' && ch != EOF);
     }
 
     // Thread spawning
@@ -426,11 +429,11 @@ int wave_type_from_string(const char *s)
                 else if (target == 'a') state.amplitude = input_val;
                 else state.offset = input_val;
                 state.params_changed = 1;
+                state.input_mode = 0;     /* MOVED INSIDE THE LOCK */
                 pthread_mutex_unlock(&state.lock);
 
                 hide_cursor();
                 keyboard_init();
-                state.input_mode = 0;
                 continue;
             }
             // Save/Load
