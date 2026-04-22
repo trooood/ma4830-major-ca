@@ -315,15 +315,18 @@ int wave_type_from_string(const char *s)
         printf("Hardware init failed. Check PCI device.\n");
         return 1;
     }
-    /* TODO: Welcome screen (placeholder for Misha); to accept the different numbers to directly go to the waves */
-    printf("==============================================\n");
-    printf("   MA4830 WAVEFORM GENERATOR\n");
-    printf("   NULL TERMINATORS\n");
-    printf("==============================================\n");
-    printf("   1 - Sine    2 - Square    3 - Triangle\n");
-    printf("   4 - Sawtooth    5 - Arbitrary\n");
+    /* TODO: Welcome screen (placeholder for Jaz); to accept the different numbers to directly go to the waves */
+    printf("===========================================================================\n");
+    printf(" _   _ _   _ _     _   _____                   _             _\n");
+    printf("| \\ | | | | | |   | | |_   _|__ _ __ _ __ ___ (_)_ __   __ _| |_ ___  _ __\n");
+    printf("|  \\| | | | | |   | |   | |/ _ \\ '__| '_ ` _ \\| | '_ \\ / _` | __/ _ \\| '__|\n");
+    printf("| |\\  | |_| | |___| |___| |  __/ |  | | | | | | | | | | (_| | || (_) | |\n");
+    printf("|_| \\_|\\___/|_____|_____|_|\\___|_|  |_| |_| |_|_|_| |_|\\__,_|\\__\\___/|_|\n");
+    printf("                  NULL Terminators' Waveform Generator\n");
+    printf("===========================================================================\n");
+    printf("   1 - Sine    2 - Square3 - Triangle    4 - Sawtooth    5 - Arbitrary\n");
     printf("   Or press Enter for default (Sine)\n");
-    printf("==============================================\n");
+    printf("===========================================================================\n");
     {
         int ch = getchar();
         if (ch >= '1' && ch <= '5')
