@@ -12,6 +12,24 @@
 #define WAVE_SQUARE   1
 #define WAVE_TRIANGLE 2
 #define WAVE_SAWTOOTH 3
+#define WAVE_ARBITRARY 4
+
+#define DAC_MAX_VALUE 65535U
+#define ARBITRARY_MAX_SAMPLES 256
+
+/*
+ * Arbitrary waveform preview support
+ *
+ * these are expected to be owned and updated by the waveform/file-I/O side
+ * typical flow:
+ *   - load text-file samples into wave_buffer[]
+ *   - set wave_count to the number of valid samples
+ *   - set arbitrary_loaded = 1
+ *   - set state->waveform = WAVE_ARBITRARY
+ */
+extern unsigned int wave_buffer[ARBITRARY_MAX_SAMPLES];
+extern int wave_count;
+extern int arbitrary_loaded;
 
 // typedef struct {
 //     int waveform;
@@ -36,6 +54,10 @@ double clamp_double(double x, double lo, double hi);
 const char *waveform_name(int waveform);
 char spinner_char(int tick);
 double wave_value(int waveform, double phase);
+unsigned int clamp_u16(unsigned long x);
+int row_from_dac_value(unsigned int value);
+double arbitrary_value_for_column(int col, int total_cols);
+void plot_vertical(char canvas[PREVIEW_H][PREVIEW_W + 1], int col, int row0, int row1);
 void draw_hr(int width);
 void draw_banner(void);
 void draw_dashboard(const UIState *state);
@@ -109,7 +131,7 @@ const char *waveform_name(int waveform)
             return "TRIANGLE";
         case WAVE_SAWTOOTH:
             return "SAWTOOTH";
-        case 4:
+        case WAVE_ARBITRARY:
             return "ARBITRARY";
         default:
             return "UNKNOWN";
@@ -152,6 +174,96 @@ double wave_value(int waveform, double phase)
     return 0.0;
 }
 
+unsigned int clamp_u16(unsigned long x)
+{
+    if (x > (unsigned long)DAC_MAX_VALUE) {
+        return DAC_MAX_VALUE;
+    }
+    return (unsigned int)x;
+}
+
+int row_from_dac_value(unsigned int value)
+{
+    unsigned long scaled;
+
+    scaled = ((unsigned long)value * (unsigned long)(PREVIEW_H - 1))
+             / (unsigned long)DAC_MAX_VALUE;
+
+    return (PREVIEW_H - 1) - (int)scaled;
+}
+
+double arbitrary_value_for_column(int col, int total_cols)
+{
+    double pos;
+    int count;
+    int i0;
+    int i1;
+    double frac;
+    double v0;
+    double v1;
+
+    count = wave_count;
+    if (count < 0) {
+        count = 0;
+    }
+    if (count > ARBITRARY_MAX_SAMPLES) {
+        count = ARBITRARY_MAX_SAMPLES;
+    }
+
+    if (!arbitrary_loaded || count <= 0) {
+        return 0.0;
+    }
+
+    if (count == 1 || total_cols <= 1) {
+        return (double)wave_buffer[0];
+    }
+
+    pos = ((double)col * (double)(count - 1))
+        / (double)(total_cols - 1);
+
+    i0 = (int)pos;
+    if (i0 < 0) {
+        i0 = 0;
+    }
+    if (i0 >= count) {
+        i0 = count - 1;
+    }
+
+    i1 = i0 + 1;
+    if (i1 >= count) {
+        i1 = count - 1;
+    }
+
+    frac = pos - (double)i0;
+    v0 = (double)wave_buffer[i0];
+    v1 = (double)wave_buffer[i1];
+
+    return v0 + ((v1 - v0) * frac);
+}
+
+void plot_vertical(char canvas[PREVIEW_H][PREVIEW_W + 1], int col, int row0, int row1)
+{
+    int start;
+    int end;
+    int r;
+
+    if (row0 < row1) {
+        start = row0;
+        end = row1;
+    } else {
+        start = row1;
+        end = row0;
+    }
+
+    for (r = start; r <= end; r++) {
+        if (r >= 0 && r < PREVIEW_H && col >= 0 && col < PREVIEW_W) {
+            if (canvas[r][col] == ' ') {
+                canvas[r][col] = '*';
+            }
+        }
+    }
+}
+
 void draw_hr(int width)
 {
     int i;
@@ -191,10 +303,16 @@ void draw_wave_preview(const UIState *state)
     int y;
     int row;
     int mid_row;
+    int prev_row;
+    int count;
+    unsigned int min_sample;
+    unsigned int max_sample;
     double phase;
+    double raw_value;
     double value;
     double scaled;
     double normalized;
+    int draw_actual_wave;
 
     for (y = 0; y < PREVIEW_H; y++) {
         for (x = 0; x < PREVIEW_W; x++) {
@@ -206,33 +324,98 @@ void draw_wave_preview(const UIState *state)
     mid_row = PREVIEW_H / 2;
 
     for (x = 0; x < PREVIEW_W; x++) {
-        canvas[mid_row][x] = '-';
+        if ((x % 2) == 0) {
+            canvas[mid_row][x] = '-';
+        }
     }
 
-    for (x = 0; x < PREVIEW_W; x++) {
-        phase = (double)x / (double)(PREVIEW_W - 1);
-        value = wave_value(state->waveform, phase);
+    count = wave_count;
+    if (count < 0) {
+        count = 0;
+    }
+    if (count > ARBITRARY_MAX_SAMPLES) {
+        count = ARBITRARY_MAX_SAMPLES;
+    }
 
-        scaled = state->mean + (state->amplitude * value);
-        scaled = clamp_double(scaled, -1.0, 1.0);
+    min_sample = 0U;
+    max_sample = 0U;
+    if (state->waveform == WAVE_ARBITRARY && arbitrary_loaded && count > 0) {
+        min_sample = wave_buffer[0];
+        max_sample = wave_buffer[0];
 
-        normalized = (scaled + 1.0) / 2.0;
-        row = (int)(((1.0 - normalized) * (double)(PREVIEW_H - 1)) + 0.5);
-
-        if (row < 0) {
-            row = 0;
+        for (x = 1; x < count; x++) {
+            if (wave_buffer[x] < min_sample) {
+                min_sample = wave_buffer[x];
+            }
+            if (wave_buffer[x] > max_sample) {
+                max_sample = wave_buffer[x];
+            }
         }
-        if (row >= PREVIEW_H) {
-            row = PREVIEW_H - 1;
-        }
+    }
 
-        canvas[row][x] = '*';
+    draw_actual_wave = 1;
+    if (state->waveform == WAVE_ARBITRARY && (!arbitrary_loaded || count <= 0)) {
+        draw_actual_wave = 0;
+    }
+
+    if (draw_actual_wave) {
+        prev_row = -1;
+
+        for (x = 0; x < PREVIEW_W; x++) {
+            phase = (double)x / (double)(PREVIEW_W - 1);
+
+            if (state->waveform == WAVE_ARBITRARY) {
+                raw_value = arbitrary_value_for_column(x, PREVIEW_W);
+
+                if (max_sample == min_sample) {
+                    value = 0.0;
+                } else {
+                    normalized = (raw_value - (double)min_sample)
+                               / ((double)max_sample - (double)min_sample);
+                    normalized = clamp_double(normalized, 0.0, 1.0);
+                    value = (2.0 * normalized) - 1.0;
+                }
+            } else {
+                value = wave_value(state->waveform, phase);
+            }
+
+            scaled = state->mean + (state->amplitude * value);
+            scaled = clamp_double(scaled, -1.0, 1.0);
+
+            normalized = (scaled + 1.0) / 2.0;
+            row = (int)(((1.0 - normalized) * (double)(PREVIEW_H - 1)) + 0.5);
+
+            if (row < 0) {
+                row = 0;
+            }
+            if (row >= PREVIEW_H) {
+                row = PREVIEW_H - 1;
+            }
+
+            if (prev_row >= 0) {
+                plot_vertical(canvas, x, prev_row, row);
+            }
+
+            canvas[row][x] = '#';
+            prev_row = row;
+        }
     }
 
     printf("ASCII Wave Preview\n");
     for (y = 0; y < PREVIEW_H; y++) {
         printf("|%s|\n", canvas[y]);
     }
+
+    if (state->waveform == WAVE_ARBITRARY) {
+        if (arbitrary_loaded && count > 0) {
+            printf("Arbitrary preview source: %d sample(s), min=%u, max=%u\n",
+                   count, min_sample, max_sample);
+            printf("Preview note: ui_graphics_integrated.c normalizes loaded samples to the screen height only.\n");
+        } else {
+            printf("Arbitrary preview source: not loaded\n");
+        }
+    }
+
     draw_hr(74);
 }
 
