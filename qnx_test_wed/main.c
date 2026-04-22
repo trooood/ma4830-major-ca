@@ -324,7 +324,7 @@ int wave_type_from_string(const char *s)
     printf("|_| \\_|\\___/|_____|_____|_|\\___|_|  |_| |_| |_|_|_| |_|\\__,_|\\__\\___/|_|\n");
     printf("                  NULL Terminators' Waveform Generator\n");
     printf("===========================================================================\n");
-    printf("   1 - Sine    2 - Square3 - Triangle    4 - Sawtooth    5 - Arbitrary\n");
+    printf("   1 - Sine    2 - Square    3 - Triangle    4 - Sawtooth    5 - Arbitrary\n");
     printf("   Or press Enter for default (Sine)\n");
     printf("===========================================================================\n");
     {
