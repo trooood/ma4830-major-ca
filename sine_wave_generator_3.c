@@ -27,7 +27,9 @@ such as analog signals, digital clocks, modulation, and testing systems.
 #define PI 3.141592653589793
 
 unsigned int wave_buffer[STEPS];  // output value
-
+int arb_steps = STEPS;
+int wave_count = 0;        /* for Jaz's ARB preview */
+int arbitrary_loaded = 0;  /* for Jaz's ARB preview */
 // ------------------------ Waveform Functions ------------------------
 
 
@@ -108,12 +110,13 @@ void generateSawtooth(unsigned int *wave_buffer, double amplitude, double offset
 }
 
 // ------------------------ Arbitrary Waveform from File ------------------------
-int arb_steps = STEPS;  // init to default number of steps
+// int arb_steps = STEPS;  // init to default number of steps ; declared on top
 
-int generateArbitrary(int *wave_buffer, const char *filename, double amplitude, double offset) {
+int generateArbitrary(unsigned int *buf, const char *filename, double amplitude, double offset){    
     FILE *file;
     int i = 0;
     double val;
+    int temp_raw[STEPS]; // Temporary signed array to safely hold fscanf data
 
     file = fopen(filename, "r");
     if (file == NULL) {
@@ -122,21 +125,21 @@ int generateArbitrary(int *wave_buffer, const char *filename, double amplitude, 
         return STEPS;
     }
 
-    while (i < STEPS && fscanf(file, "%d", &wave_buffer[i]) != EOF) {  // this part should go into a temp buffer
+    while (i < STEPS && fscanf(file, "%d", &temp_raw[i]) != EOF) {  // this part should go into a temp buffer
         //if (wave_buffer[i] > MAX_VAL) wave_buffer[i] = MAX_VAL;
         i++;
     }
     fclose(file);
 
-    int min_val = wave_buffer[0];
-    int max_val = wave_buffer[0];
+    int min_val = temp_raw[0];
+    int max_val = temp_raw[0];
 
     for (int j = 0; j < i; j++) {  // find max and min of file values
-        if (wave_buffer[j] < min_val) {
-            min_val = wave_buffer[j];
+        if (temp_raw[j] < min_val) {
+            min_val = temp_raw[j];
         }
-        if (wave_buffer[j] > max_val) {
-            max_val = wave_buffer[j];
+        if (temp_raw[j] > max_val) {
+            max_val = temp_raw[j];
         }
     }
 
@@ -151,19 +154,19 @@ int generateArbitrary(int *wave_buffer, const char *filename, double amplitude, 
     if (min_val < 0) {
         int pos_shift = -min_val;
         for (int j = 0; j < i; j++) {
-            wave_buffer[j] += pos_shift;
+            temp_raw[j] += pos_shift;
         }
         
     }
 
-    // printf("\nwave_buffer contents (%d elements):\n", STEPS);
-    for (int idx = 0; idx < STEPS; idx++) {
-        printf("wave_buffer[%d] = %u\n", idx, wave_buffer[idx]);
-    }
+    // // printf("\nwave_buffer contents (%d elements):\n", STEPS);
+    // for (int idx = 0; idx < STEPS; idx++) {
+    //     printf("wave_buffer[%d] = %u\n", idx, wave_buffer[idx]);
+    // }
 
     // rescale (amp)
     for (int j = 0; j < i; j++) {
-        wave_buffer[j] = (unsigned int)floorf(wave_buffer[j] * mul_val);
+        wave_buffer[j] = (unsigned int)floorf(temp_raw[j] * mul_val);
     }
 
 
@@ -219,6 +222,8 @@ int generateArbitrary(int *wave_buffer, const char *filename, double amplitude, 
 
     }
 
+    wave_count = arb_steps;
+    arbitrary_loaded = 1;
     return arb_steps;
 }
 
