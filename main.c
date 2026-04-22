@@ -397,7 +397,7 @@ int wave_type_from_string(const char *s)
 
             // TODO:THINKING IF WE WANNA DO MID SWAP FILES; RN IS HARDCODED NAMES, CAN GO TO SCAN FOR ALL TXT IF WE WANT TO; would be nice if have scanner
             //TODO: TRUDY's Negative clamp
-            else if (key == 'w') {
+            else if (key == 'w') { // OLD W CYCLING
                 if (strcmp(state.arb_file, "wave.txt") == 0)
                     strcpy(state.arb_file, "wave1.txt");
                 else if (strcmp(state.arb_file, "wave1.txt") == 0)
@@ -409,6 +409,39 @@ int wave_type_from_string(const char *s)
                 state.wave_type = WAVE_ARB;
                 state.params_changed = 1;
             }
+             else if (key == 'w') { // NEW W CYCLING
+                DIR *dir;
+                struct dirent *entry;
+                char *files[100];  // max 100 files
+                int file_count = 0;
+                int current_index = -1;
+                
+                dir = opendir(".");
+                if (dir) {
+                    while ((entry = readdir(dir)) != NULL) {
+                        char *dot = strrchr(entry->d_name, '.');
+                        if (dot && strcmp(dot, ".txt") == 0) {
+                            files[file_count] = entry->d_name;
+                            
+                            if (strcmp(state.arb_file, files[file_count]) == 0) {
+                                current_index = file_count;
+                            }
+                            file_count++;
+                        }
+                    }
+                    closedir(dir);
+                }
+                
+                if (file_count > 0) {
+                    int next_index = (current_index + 1) % file_count;
+                    strcpy(state.arb_file, files[next_index]);
+                }
+                
+                state.wave_type = WAVE_ARB;
+                state.params_changed = 1;
+            }
+
+             
             else if (key == 'f' || key == 'a' || key == 'o') {
                 target = key;
                 state.input_mode = 1;
