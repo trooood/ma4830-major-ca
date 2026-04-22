@@ -214,6 +214,7 @@ int generateArbitrary(int *wave_buffer, const char *filename, double amplitude, 
         val = wave_buffer[i];
         val = (offset * MAX_VAL) + (amplitude * val);  // this is rescaled because the wave file is in the range [0,MAX_VAL] and not [-1,1]
         if (val > MAX_VAL) val = MAX_VAL;
+        if (val < 0) val = 0;
         wave_buffer[i] = val;
 
     }
