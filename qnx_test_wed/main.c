@@ -11,13 +11,10 @@
 // waveforms.h / .c     - Waveform math               (Misha/Trudy)
 // setup_input.h / .c   - Config load/save/parse       (Alicia)
 // display              - ASCII graphics              (Jaz)
-// Compile(Lab QNX): make
-// Run(Lab QNX): ./wavegen
+// Compile Command(windows): gcc main.c src/hw.c sine_wave_generator_3.c ui_graphics.c setup_input.c -I./src -lpthread -lm -o main
+// Compile Command(Linux):cc -Wall -o wavegen main.c hw.c sine_wave_generator_3.c ui_graphics.c setup_input.c -lm
 // +/- zoom in/out; [ - move down;] - move up; s - save data to settings.dat; l- load data from settings.dat
 // sample load wave command: ./main arb 100 1.0 0.0 wave1.txt
-
-// main.c - Waveform Generator (Integrated)
-// Fully restored with Save/Load and Manual Offset
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -32,14 +29,7 @@
 #include "sine_wave.h"
 #include "ui_graphics.h"
 #include "setup_input.h"
-
-/* ---- File Locations ---- */
-#define DATA_DIR "data/"
-#define DEFAULT_WAVE DATA_DIR "wave.txt"
-#define WAVE1 DATA_DIR "wave1.txt"
-#define WAVE2 DATA_DIR "wave2.txt"
-#define WAVE3 DATA_DIR "wave3.txt"
-
+ 
 /* ---- Wave type enum ---- */
 #define WAVE_SINE   0
 #define WAVE_SQUARE 1
@@ -47,31 +37,38 @@
 #define WAVE_SAW    3
 #define WAVE_ARB    4
  
+// Shared state (protected by mutex)
 typedef struct {
-    int    wave_type;        
-    double frequency;        
-    double amplitude;        
-    double offset;           
-    char   arb_file[256];   
-    int    params_changed;   
-    int    running;          
+    int    wave_type;        // WAVE_SINE, etc.        
+    double frequency;        // Hz                       
+    double amplitude;        // 0.0 to 1.0              
+    double offset;           // -1.0 to 1.0            
+    char   arb_file[256];   // filename for arbitrary
+    int    params_changed;   // dirty flag
+    int    running;          //0 = shutdown
     pthread_mutex_t lock;
-    int    input_mode;
-    int audio_enabled;       
+    int    input_mode;       /* 1 = display thread pauses */
+    int paused;
+    int audio_enabled;
 } State;
  
+// Globals
 static State  state;
 static Device dev;
  
+// SIGINT handler - sets shutdown flag
+// Qihong/Jaz: extend for other graceful termination paths
 void on_sigint(int sig)
 {
     (void)sig;
     state.running = 0;
 }
+// WAVE OUTPUT THREAD 
+// Copies params from state under lock (short hold) and regenerates local buffer OUTSIDE lock if params changed; Outputs samples to DAC with nanosleep timing
 
 void *wave_thread(void *arg)
 {
-    unsigned int buf[STEPS];
+    unsigned int buf[STEPS];     //local buffer
     int    local_type;
     double local_freq, local_amp, local_off;
     int    arb_count;
@@ -79,14 +76,12 @@ void *wave_thread(void *arg)
     int    i;
     long   delay_ns;
     struct timespec ts;
-    
     #ifdef __QNX__
         struct sched_param sp;
         timer_t timerid;
         struct itimerspec timer;
         sigset_t sigset;
     #endif
-
     (void)arg;
     arb_count = STEPS;
     
@@ -96,16 +91,21 @@ void *wave_thread(void *arg)
         sigemptyset(&sigset);
         sigaddset(&sigset, SIGALRM);
         sigprocmask(SIG_BLOCK, &sigset, NULL);
-        timer_create(CLOCK_REALTIME, NULL, &timerid);
     #endif
-
+    //Force initial buffer generation
     generateSine(buf, 1.0, 0.0);
-    
+ 
     while (state.running) {
+        // Copy params under lock (short critical section)
         if (state.input_mode) {
             usleep(100000);
             continue;
         }
+        if (state.paused) {
+            usleep(50000);
+            continue;
+        }
+
         pthread_mutex_lock(&state.lock);
         local_type = state.wave_type;
         local_freq = state.frequency;
@@ -116,282 +116,392 @@ void *wave_thread(void *arg)
             state.params_changed = 0;
             pthread_mutex_unlock(&state.lock);
  
+            //Regenerate buffer OUTSIDE lock
             switch (local_type) {
-                case WAVE_SINE:   generateSine(buf, local_amp, local_off); arb_count = STEPS; break;
-                case WAVE_SQUARE: generateSquare(buf, local_amp, local_off); arb_count = STEPS; break;
-                case WAVE_TRI:    generateTriangular(buf, local_amp, local_off); arb_count = STEPS; break;
-                case WAVE_SAW:    generateSawtooth(buf, local_amp, local_off); arb_count = STEPS; break;
+                case WAVE_SINE:
+                    generateSine(buf, local_amp, local_off);
+                    arb_count = STEPS;
+                    break;
+                case WAVE_SQUARE:
+                    generateSquare(buf, local_amp, local_off);
+                    arb_count = STEPS;
+                    break;
+                case WAVE_TRI:
+                    generateTriangular(buf, local_amp, local_off);
+                    arb_count = STEPS;
+                    break;
+                case WAVE_SAW:
+                    generateSawtooth(buf, local_amp, local_off);
+                    arb_count = STEPS;
+                    break;
                 case WAVE_ARB:
                     arb_count = generateArbitrary((int*)buf, state.arb_file, local_amp, local_off);
-                    if (arb_count <= 0) { generateSine(buf, local_amp, local_off); arb_count = STEPS; }
+                    if (arb_count <= 0) {
+                        generateSine(buf, local_amp, local_off);
+                        arb_count = STEPS;
+                    }
                     break;
-                default: generateSine(buf, local_amp, local_off); arb_count = STEPS; break;
+                default:
+                    generateSine(buf, local_amp, local_off);
+                    arb_count = STEPS;
+                    break;
             }
         } else {
             pthread_mutex_unlock(&state.lock);
         }
  
+        // One out put cycle
+        //@Trudy this is the limiter you wanted
         cycle_len = (local_type == WAVE_ARB) ? arb_count : STEPS;
         delay_ns = (long)(1000000000.0 / (local_freq * cycle_len));
-        if (delay_ns < 1000) delay_ns = 1000;
-        
-        ts.tv_sec  = delay_ns / 1000000000;
-        ts.tv_nsec = delay_ns % 1000000000;
-
+        if (delay_ns < 1000) delay_ns = 1000;            //minimum is 1 micro-sec
+        ts.tv_sec  = 0;
+        ts.tv_nsec = delay_ns;
+ 
         #ifdef __QNX__           
-            timer.it_value.tv_sec = ts.tv_sec;
-            timer.it_value.tv_nsec = ts.tv_nsec;
-            timer.it_interval.tv_sec = ts.tv_sec;
-            timer.it_interval.tv_nsec = ts.tv_nsec;
+            timer_create(CLOCK_REALTIME, NULL, &timerid);
+            timer.it_value.tv_sec = 0;
+            timer.it_value.tv_nsec = delay_ns;
+            timer.it_interval.tv_sec = 0;
+            timer.it_interval.tv_nsec = delay_ns;
             timer_settime(timerid, 0, &timer, NULL);
             
             for (i = 0; i < cycle_len; i++) {
-                sigwaitinfo(&sigset, NULL);
+                sigwaitinfo(&sigset, NULL);  /* blocks until timer fires */
                 if (!state.running) break;
                 hw_dac(&dev, 0, (unsigned short)buf[i]);
             }
+            
+            timer_delete(timerid);
         #else
+            /* Windows fallback: nanosleep */
             for (i = 0; i < cycle_len; i++) {
                 if (!state.running) break;
                 hw_dac(&dev, 0, (unsigned short)buf[i]);
                 nanosleep(&ts, NULL);
             }
         #endif
+
     }
-    #ifdef __QNX__
-        timer_delete(timerid);
-    #endif
     return NULL;
 }
  
+//  DISPLAY THREAD
+//  Renders Jaz's ASCII dashboard, bridging our State to her UIState.
+//  Refreshes at ~10 fps atm
+
 void *display_thread(void *arg)
 {
+    int    local_type;
+    double local_freq, local_amp, local_off;
+    int    local_running;
     UIState ui;
+
     (void)arg;
-    ui.dac_on = 1; ui.adc_enabled = 0; ui.dio_ready = 0; ui.tick = 0; ui.show_error = 0;
+
+    /* Initialize fixed fields */
+    ui.dac_on = 1;
+    ui.adc_enabled = 0;
+    ui.dio_ready = 0;
+    ui.tick = 0;
+    ui.show_error = 0;
     strcpy(ui.last_message, "System started.");
+
     hide_cursor();
 
     while (state.running) {
-        if (state.input_mode) { usleep(100000); continue; }
+        if (state.input_mode) {
+            usleep(100000);
+            continue;
+        }
         pthread_mutex_lock(&state.lock);
-        ui.waveform  = state.wave_type;
-        ui.frequency = state.frequency;
-        ui.amplitude = state.amplitude;
-        ui.mean      = state.offset;
-        ui.running   = state.running;
+        local_type    = state.wave_type;
+        local_freq    = state.frequency;
+        local_amp     = state.amplitude;
+        local_off     = state.offset;
+        local_running = state.running;
         pthread_mutex_unlock(&state.lock);
-        ui.tick++;
+
+        /* Bridge: fill Jaz's UIState from our State */
+        ui.waveform  = local_type;
+        ui.frequency = local_freq;
+        ui.amplitude = local_amp;
+        ui.mean      = local_off;
+        ui.running   = state.paused ? 0 : local_running;
+        if (state.paused) {
+            strcpy(ui.last_message, "PAUSED - Press 'p' to start");
+            ui.running = 0;
+        } else {
+            strcpy(ui.last_message, "Running");
+            ui.running = local_running;
+            ui.tick++;
+        }
         render_ui(&ui);
-        usleep(120000);
+        
+        // Audio beep moved to UI thread to protect DAC timing
+        if (state.audio_enabled && !state.paused) {
+            printf("\a");
+            fflush(stdout);
+        }
+        usleep(120000);  /* ~8 fps, matches Jaz's 120ms frame time */
     }
+
     show_cursor();
     return NULL;
 }
+ 
 
+//  HELPER: map wave type string to enum
+//  (bridges Alicia's config strings to our int enum)
 int wave_type_from_string(const char *s)
 {
-    if (strcmp(s, "sine") == 0) return WAVE_SINE;
+    if (strcmp(s, "sine")   == 0) return WAVE_SINE;
     if (strcmp(s, "square") == 0) return WAVE_SQUARE;
-    if (strcmp(s, "tri") == 0) return WAVE_TRI;
-    if (strcmp(s, "saw") == 0) return WAVE_SAW;
-    if (strcmp(s, "arb") == 0) return WAVE_ARB;
-    return WAVE_SINE;
+    if (strcmp(s, "tri")    == 0) return WAVE_TRI;
+    if (strcmp(s, "saw")    == 0) return WAVE_SAW;
+    if (strcmp(s, "arb")    == 0) return WAVE_ARB;
+    return WAVE_SINE;  // default fallback
 }
+ //  
+//   Qihong: DIO switches and ADC potentiometer implemented in qnx_test_monday
+//   SW1=Run/Stop, SW2=ADC Amp, SW3=ADC Freq, SW4=Audio
 
-int main(int argc, char *argv[])
+ int main(int argc, char *argv[])
 {
     pthread_t wave_tid, disp_tid;
-    setup_t *cfg, save, *loaded;
+    setup_t *cfg;
+    setup_t save;
+    setup_t *loaded;
+    char key;
+    char target;
+    int up, down, left, right;
     char input_buf[32];
     double input_val;
     const char *wnames[] = {"sine", "square", "tri", "saw", "arb"};
 
-    state.wave_type = WAVE_SINE; state.frequency = 5.0; state.amplitude = 1.0;
-    state.offset = 0.0; strcpy(state.arb_file, DEFAULT_WAVE);
-    state.params_changed = 1; state.running = 1; state.input_mode = 0;
-    pthread_mutex_init(&state.lock, NULL);
 
-    #ifdef __QNX__
-    {
-        sigset_t block_set;
-        sigemptyset(&block_set);
-        sigaddset(&block_set, SIGALRM);
-        pthread_sigmask(SIG_BLOCK, &block_set, NULL);
-    }
-    #endif
+    // Default state
+    state.wave_type      = WAVE_SINE;
+    state.frequency = FREQ_DEFAULT;
+    state.amplitude = AMP_DEFAULT;
+    state.offset    = OFF_DEFAULT;
+    strcpy(state.arb_file, "wave.txt");
+    state.params_changed = 1;      // force first buffer to generate
+    state.running        = 1;
+    state.input_mode     = 0;
+    state.paused         = 1;      /* start paused for trigger mode */
+    state.audio_enabled  = 0;
+    pthread_mutex_init(&state.lock, NULL);
  
     cfg = parse_command_line(argc, argv);
-    if (cfg->is_valid) {
-        state.wave_type = wave_type_from_string(cfg->waveform.waveform_type);
-        state.frequency = cfg->waveform.frequency;
-        state.amplitude = cfg->waveform.amplitude;
-        state.offset = cfg->waveform.offset;
-        strncpy(state.arb_file, cfg->waveform.arbitrary_file, 255);
+    if (!cfg->is_valid) {
+        printf("Error: %s\n", cfg->error_message);
         free_setup(cfg);
+        return 1;
     }
+    state.wave_type = wave_type_from_string(cfg->waveform.waveform_type);
+    state.frequency = cfg->waveform.frequency;
+    state.amplitude = cfg->waveform.amplitude;
+    state.offset    = cfg->waveform.offset;
+    strncpy(state.arb_file, cfg->waveform.arbitrary_file, 255);
+    print_setup_summary(cfg);
+    free_setup(cfg);
  
+    // signal handler
     signal(SIGINT, on_sigint);
-    if (hw_open(&dev) != 0) { printf("Hardware init failed.\n"); return 1; }
  
+    // hardware check
+    if (hw_open(&dev) != 0) {
+        printf("Hardware init failed. Check PCI device.\n");
+        return 1;
+    }
+    /* TODO: Welcome screen (placeholder for Jaz); to accept the different numbers to directly go to the waves */
+    printf("===========================================================================\n");
+    printf(" _   _ _   _ _     _   _____                   _             _\n");
+    printf("| \\ | | | | | |   | | |_   _|__ _ __ _ __ ___ (_)_ __   __ _| |_ ___  _ __\n");
+    printf("|  \\| | | | | |   | |   | |/ _ \\ '__| '_ ` _ \\| | '_ \\ / _` | __/ _ \\| '__|\n");
+    printf("| |\\  | |_| | |___| |___| |  __/ |  | | | | | | | | | | (_| | || (_) | |\n");
+    printf("|_| \\_|\\___/|_____|_____|_|\\___|_|  |_| |_| |_|_|_| |_|\\__,_|\\__\\___/|_|\n");
+    printf("                  NULL Terminators' Waveform Generator\n");
+    printf("===========================================================================\n");
+    printf("   1 - Sine    2 - Square3 - Triangle    4 - Sawtooth    5 - Arbitrary\n");
+    printf("   Or press Enter for default (Sine)\n");
+    printf("===========================================================================\n");
+    {
+        int ch = getchar();
+        if (ch >= '1' && ch <= '5')
+            state.wave_type = ch - '1';
+            
+        /*Flush leftover newline to prevent phantom keypresses */
+        while ((ch = getchar()) != '\n' && ch != EOF);
+    }
+
+    // Thread spawning
     pthread_create(&wave_tid, NULL, wave_thread, NULL);
     pthread_create(&disp_tid, NULL, display_thread, NULL);
+ 
+    // keyboard input loop (non-blocking via Alicia's keyboard module)
     keyboard_init();
 
     while (state.running) {
-        char key;
-        int up, down, left, right;
-        #ifdef __QNX__
-        int switches, sw1, sw2, sw3;
-        unsigned short adc0, adc1_val;
-        #else
-        int sw2 = 0, sw3 = 0;
-        #endif
-
-        key = 0; up = 0; down = 0; left = 0; right = 0;
-
-        #ifdef __QNX__
-        /* 1. Read all 4 bits from the hardware switch register */
-        switches = hw_read_switch(&dev);
-        sw1 = (switches & 0x01) ? 1 : 0;
-        sw2 = (switches & 0x02) ? 1 : 0;
-        sw3 = (switches & 0x04) ? 1 : 0;
-        
-        /* 2. Update shared state for the wave thread */
-        pthread_mutex_lock(&state.lock);
-        state.audio_enabled = (switches & 0x08) ? 1 : 0;
-        pthread_mutex_unlock(&state.lock);
-
-        /* 3. Print updated status bar including Audio (SW4) */
-        printf("\r[HW] SW1(Run): %d | SW2(Amp): %d | SW3(Freq): %d | SW4(Audio): %d    ", 
-               sw1, sw2, sw3, state.audio_enabled);
-        fflush(stdout);
-
-        /* 4. Safety check for system termination */
-        if (sw1 == 0) { 
-            state.running = 0; 
-            break; 
-        }
-        #endif
+        key = 0;
+        up = 0, down = 0, left = 0, right = 0;
 
         keyboard_read_arrow(&key, &up, &down, &left, &right);
+
         if (key || up || down || left || right) {
             pthread_mutex_lock(&state.lock);
-            if (up && sw3 == 0) { state.frequency *= 1.1; if (state.frequency > 10.0) state.frequency = 10.0; state.params_changed = 1; }
-            else if (down && sw3 == 0) { state.frequency /= 1.1; if (state.frequency < 0.01) state.frequency = 0.01; state.params_changed = 1; }
-            else if (right) { state.wave_type = (state.wave_type + 1) % 5; state.params_changed = 1; }
-            else if (left) { state.wave_type = (state.wave_type + 4) % 5; state.params_changed = 1; }
-            else if (key == '+' && sw2 == 0) { state.amplitude += 0.05; if (state.amplitude > 1.0) state.amplitude = 1.0; state.params_changed = 1; }
-            else if (key == '-' && sw2 == 0) { state.amplitude -= 0.05; if (state.amplitude < 0.0) state.amplitude = 0.0; state.params_changed = 1; }
-            else if (key == ']') { state.offset += 0.05; if (state.offset > 1.0) state.offset = 1.0; state.params_changed = 1; }
-            else if (key == '[') { state.offset -= 0.05; if (state.offset < -1.0) state.offset = -1.0; state.params_changed = 1; }
-            else if (key >= '1' && key <= '5') { state.wave_type = key - '1'; state.params_changed = 1; }
-            
-            else if (key == 'w') {
-                if (strcmp(state.arb_file, DEFAULT_WAVE) == 0) strcpy(state.arb_file, WAVE1);
-                else if (strcmp(state.arb_file, WAVE1) == 0) strcpy(state.arb_file, WAVE2);
-                else if (strcmp(state.arb_file, WAVE2) == 0) strcpy(state.arb_file, WAVE3);
-                else strcpy(state.arb_file, DEFAULT_WAVE);
-                state.wave_type = WAVE_ARB; state.params_changed = 1;
+
+            if (up) {
+                state.frequency *= 1.1;
+                if (state.frequency > FREQ_MAX) state.frequency = FREQ_MAX;
+                state.params_changed = 1;
             }
+            else if (down) {
+                state.frequency /= 1.1;
+                if (state.frequency < FREQ_MIN) state.frequency = FREQ_MIN;
+                state.params_changed = 1;
+            }
+            else if (right) {
+                state.wave_type = (state.wave_type + 1) % 5;
+                state.params_changed = 1;
+            }
+            else if (left) {
+                state.wave_type = (state.wave_type + 4) % 5;
+                state.params_changed = 1;
+            }
+            else if (key == '+') {
+                state.amplitude += 0.05;
+                if (state.amplitude > AMP_MAX) state.amplitude = AMP_MAX;
+                state.params_changed = 1;
+            }
+            else if (key == '-') {
+                state.amplitude -= 0.05;
+                if (state.amplitude < AMP_MIN) state.amplitude = AMP_MIN;
+                state.params_changed = 1;
+            }
+            else if (key == ']') {
+                state.offset += 0.05;
+                if (state.offset > OFF_MAX) state.offset = OFF_MAX;
+                state.params_changed = 1;
+            }
+            else if (key == '[') {
+                state.offset -= 0.05;
+                if (state.offset < OFF_MIN) state.offset = OFF_MIN;
+                state.params_changed = 1;
+            }
+            else if (key == '1') { state.wave_type = WAVE_SINE;   state.params_changed = 1; }
+            else if (key == '2') { state.wave_type = WAVE_SQUARE;  state.params_changed = 1; }
+            else if (key == '3') { state.wave_type = WAVE_TRI;     state.params_changed = 1; }
+            else if (key == '4') { state.wave_type = WAVE_SAW;     state.params_changed = 1; }
+            else if (key == '5') { state.wave_type = WAVE_ARB;     state.params_changed = 1; }
+
+            // TODO:THINKING IF WE WANNA DO MID SWAP FILES; RN IS HARDCODED NAMES, CAN GO TO SCAN FOR ALL TXT IF WE WANT TO; would be nice if have scanner
+            //TRUDYMISHA AND JAZ NEEDS TO FIX ARBITARY
+            else if (key == 'w') {
+                if (strcmp(state.arb_file, "wave.txt") == 0)
+                    strcpy(state.arb_file, "wave1.txt");
+                else if (strcmp(state.arb_file, "wave1.txt") == 0)
+                    strcpy(state.arb_file, "wave2.txt");
+                else if (strcmp(state.arb_file, "wave2.txt") == 0)
+                    strcpy(state.arb_file, "wave3.txt");
+                else
+                    strcpy(state.arb_file, "wave.txt");
+                state.wave_type = WAVE_ARB;
+                state.params_changed = 1;
+            }
+            else if (key == 'f' || key == 'a' || key == 'o') {
+                target = key;
+                state.input_mode = 1;
+                pthread_mutex_unlock(&state.lock);
+                keyboard_restore();
+                show_cursor();
+
+                if (target == 'f')
+                    input_val = safe_handling("\nEnter frequency (0.01-10.0 Hz): ",
+                                             FREQ_MIN, FREQ_MAX, state.frequency);
+                else if (target == 'a')
+                    input_val = safe_handling("\nEnter amplitude (0.0-1.0): ",
+                                             AMP_MIN, AMP_MAX, state.amplitude);
+                else
+                    input_val = safe_handling("\nEnter offset (-1.0 to 1.0): ",
+                                             OFF_MIN, OFF_MAX, state.offset);
+
+                pthread_mutex_lock(&state.lock);
+                if (target == 'f') state.frequency = input_val;
+                else if (target == 'a') state.amplitude = input_val;
+                else state.offset = input_val;
+                state.params_changed = 1;
+                state.input_mode = 0;     /* MOVED INSIDE THE LOCK */
+                pthread_mutex_unlock(&state.lock);
+
+                hide_cursor();
+                keyboard_init();
+                continue;
+            }
+            // Save/Load
             else if (key == 's') {
-                /* 1. Ensure the structure is completely cleared before use */
-                memset(&save, 0, sizeof(setup_t));
-
-                /* 2. Safely copy the waveform name string */
-                if (state.wave_type >= 0 && state.wave_type < 5) {
-                    strncpy(save.waveform.waveform_type, wnames[state.wave_type], sizeof(save.waveform.waveform_type) - 1);
-                } else {
-                    strncpy(save.waveform.waveform_type, "sine", sizeof(save.waveform.waveform_type) - 1);
-                }
-
-                /* 3. Assign numeric values */
+                strcpy(save.waveform.waveform_type, wnames[state.wave_type]);
                 save.waveform.frequency = state.frequency;
                 save.waveform.amplitude = state.amplitude;
-                save.waveform.offset    = state.offset;
-
-                /* 4. Safely copy the arbitrary file path string */
-                strncpy(save.waveform.arbitrary_file, state.arb_file, sizeof(save.waveform.arbitrary_file) - 1);
-
-                /* 5. Mark as valid and save to disk */
-                save.is_valid = 1;
+                save.waveform.offset = state.offset;
+                strcpy(save.waveform.arbitrary_file, state.arb_file);
+                save.output.output_mode = 0;
+                save.output.sample_rate = 48000;
+                save.output.duration_seconds = 0;
                 save_config_file("settings.dat", &save);
-                
-                printf("\rSettings saved to settings.dat          ");
-                fflush(stdout);
             }
             else if (key == 'l') {
                 loaded = load_config_file("settings.dat");
                 if (loaded && loaded->is_valid) {
-                    pthread_mutex_lock(&state.lock);
-                    
                     state.wave_type = wave_type_from_string(loaded->waveform.waveform_type);
                     state.frequency = loaded->waveform.frequency;
                     state.amplitude = loaded->waveform.amplitude;
                     state.offset    = loaded->waveform.offset;
-                    strncpy(state.arb_file, loaded->waveform.arbitrary_file, 255);
-
                     state.params_changed = 1;
-                    
-                    pthread_mutex_unlock(&state.lock);
                     free_setup(loaded);
-                    
-                    printf("\r[System] Loaded: %s at %.2f Hz          ", 
-                            wnames[state.wave_type], state.frequency);
-                    fflush(stdout);
                 }
             }
-            else if ((key == 'f' && sw3 == 0) || (key == 'a' && sw2 == 0) || key == 'o') {
-                char target = key;
-                state.input_mode = 1; 
-                pthread_mutex_unlock(&state.lock);
-                
-                keyboard_restore(); 
-                show_cursor();
-                
-                printf("\nEnter new %s: ", (target == 'f') ? "Freq" : (target == 'a') ? "Amp" : "Offset");
-                fflush(stdout);
-                
-                if (fgets(input_buf, sizeof(input_buf), stdin)) {
-                    input_val = atof(input_buf);
-                    
-                    pthread_mutex_lock(&state.lock);
-                    if (target == 'f') {
-                        if (input_val >= 0.01 && input_val <= 10.0) state.frequency = input_val;
-                    } 
-                    else if (target == 'a') {
-                        if (input_val >= 0.0 && input_val <= 1.0) state.amplitude = input_val;
-                    } 
-                    else {
-                        if (input_val >= -1.0 && input_val <= 1.0) state.offset = input_val;
-                    }
-                    state.params_changed = 1;
-                    pthread_mutex_unlock(&state.lock);
-                }
 
-                hide_cursor(); 
-                keyboard_init(); 
-                state.input_mode = 0;
+            else if (key == 'q' || key == 'Q') {
+                state.running = 0;
             }
-            else if (key == 'q' || key == 'Q') state.running = 0;
+
+            else if (key == 'p') {
+                state.paused = !state.paused;
+            }
+            else if (key == 'm') {
+                state.audio_enabled = !state.audio_enabled;
+                if (state.audio_enabled) printf("\a");
+                fflush(stdout);
+            }
             pthread_mutex_unlock(&state.lock);
         }
-
         #ifdef __QNX__
-        if (sw2 == 1) {
-            adc0 = read_adc(&dev, 0); pthread_mutex_lock(&state.lock);
-            state.amplitude = (float)adc0 / 65535.0f; state.params_changed = 1; pthread_mutex_unlock(&state.lock);
-        }
-        if (sw3 == 1) {
-            adc1_val = read_adc(&dev, 1); pthread_mutex_lock(&state.lock);
-            state.frequency = 0.01 + ((float)adc1_val / 65535.0f) * 9.99; state.params_changed = 1; pthread_mutex_unlock(&state.lock);
+        /* Potentiometer control (Qihong) */
+        {
+            unsigned short adc0;
+            float pot_amp;
+            adc0 = read_adc(&dev, 0);
+            pot_amp = (float)adc0 / 65535.0f;
+            pthread_mutex_lock(&state.lock);
+            state.amplitude = pot_amp;
+            state.params_changed = 1;
+            pthread_mutex_unlock(&state.lock);
         }
         #endif
-        usleep(20000);
+
+        usleep(20000);  // 20ms poll rate
     }
 
-    keyboard_restore(); pthread_join(wave_tid, NULL); pthread_join(disp_tid, NULL);
-    hw_close(&dev); pthread_mutex_destroy(&state.lock);
+    // Graceful shutdown
+    keyboard_restore();
+    pthread_join(wave_tid, NULL);
+    pthread_join(disp_tid, NULL);
+    hw_close(&dev);
+    pthread_mutex_destroy(&state.lock);
+    show_cursor();
     printf("\nClean shutdown complete.\n");
+ 
     return 0;
 }
