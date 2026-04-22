@@ -50,6 +50,7 @@ typedef struct {
     int    input_mode;       /* 1 = display thread pauses */
     int paused;
     int audio_enabled;
+    char status_msg[128];
 } State;
  
 // Globals
@@ -135,7 +136,8 @@ void *wave_thread(void *arg)
                     arb_count = STEPS;
                     break;
                 case WAVE_ARB:
-                    arb_count = generateArbitrary((int*)buf, state.arb_file, local_amp, local_off);
+                    arb_count = generateArbitrary(buf, state.arb_file, local_amp, local_off);
+                    memcpy(buf, wave_buffer, sizeof(unsigned int) * STEPS);
                     if (arb_count <= 0) {
                         generateSine(buf, local_amp, local_off);
                         arb_count = STEPS;
@@ -231,6 +233,11 @@ void *display_thread(void *arg)
         if (state.paused) {
             strcpy(ui.last_message, "PAUSED - Press 'p' to start");
             ui.running = 0;
+        } else if (state.status_msg[0] != '\0') {
+            strcpy(ui.last_message, state.status_msg);
+            state.status_msg[0] = '\0';  /* clear after displaying once */
+            ui.running = local_running;
+            ui.tick++;
         } else {
             strcpy(ui.last_message, "Running");
             ui.running = local_running;
@@ -292,6 +299,7 @@ int wave_type_from_string(const char *s)
     state.paused         = 1;      /* start paused for trigger mode */
     state.audio_enabled  = 0;
     pthread_mutex_init(&state.lock, NULL);
+    state.status_msg[0] = '\0';
  
     cfg = parse_command_line(argc, argv);
     if (!cfg->is_valid) {
@@ -395,8 +403,9 @@ int wave_type_from_string(const char *s)
             else if (key == '4') { state.wave_type = WAVE_SAW;     state.params_changed = 1; }
             else if (key == '5') { state.wave_type = WAVE_ARB;     state.params_changed = 1; }
 
-            // TODO:THINKING IF WE WANNA DO MID SWAP FILES; RN IS HARDCODED NAMES, CAN GO TO SCAN FOR ALL TXT IF WE WANT TO; would be nice if have scanner
-            //TODO: TRUDY's Negative clamp
+            /* TODO: Alicia file scanner - replace hardcoded wave file cycling
+               with scan_wave_files() that reads data/ directory.
+               Placeholder: void scan_wave_files(char filelist[][256], int *count); */
             else if (key == 'w') {
                 if (strcmp(state.arb_file, "wave.txt") == 0)
                     strcpy(state.arb_file, "wave1.txt");
@@ -449,6 +458,7 @@ int wave_type_from_string(const char *s)
                 save.output.sample_rate = 48000;
                 save.output.duration_seconds = 0;
                 save_config_file("settings.dat", &save);
+                strcpy(state.status_msg, "Settings saved to settings.dat");
             }
             else if (key == 'l') {
                 loaded = load_config_file("settings.dat");
@@ -459,6 +469,7 @@ int wave_type_from_string(const char *s)
                     state.offset    = loaded->waveform.offset;
                     state.params_changed = 1;
                     free_setup(loaded);
+                    strcpy(state.status_msg, "Settings loaded from settings.dat");
                 }
             }
 
