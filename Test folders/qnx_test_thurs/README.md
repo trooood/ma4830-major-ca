@@ -110,18 +110,22 @@ data/wave3.txt             - Arbitrary waveform data
 ```
 
 ### Photos/video Needed for Report
-1. Oscilloscope: SINE wave
-2. Oscilloscope: SQUARE wave
-3. Oscilloscope: TRIANGLE wave
-4. Oscilloscope: SAWTOOTH wave
-5. Oscilloscope: ARBITRARY waveform from file
-6. Oscilloscope: frequency change (before/after) (Arrow keys)
-7. Oscilloscope: amplitude change via potentiometer (+/-)
-8. Oscilloscope: offset change via potentiometer ([/])
-9. Terminal: Welcome screen with waveform selection
-10. Terminal: Dashboard in PAUSED state
-11. Terminal: Manual frequency input (f key) with error retry
-12. Terminal: Manual amplitude input (a key)
-13. Terminal: Manual offset input (o key)
-14. Terminal: Arbitrary waveform loaded (w key cycling)
+1. SINE wave (1)
+2. SQUARE wave (2)
+3. TRIANGLE wave (3)
+4. SAWTOOTH wave (4)
+5. ARBITRARY waveform from file (5)
+6. frequency change (before/after) (Arrow keys)
+7. amplitude change via potentiometer (+/-)
+8. offset change via potentiometer ([/])
+9. Welcome screen with waveform selection
+10. Dashboard in PAUSED state (Start and midway) (P)
+11. Manual frequency input (f key) with error retry
+12. Manual amplitude input (a key)
+13. Manual offset input (o key)
+14. Arbitrary waveform loaded (w key cycling)
 15. Hardware setup (PCI card, switches, potentiometer)
+16. Sound key per cycle (m)
+17. all breadboard interatctions
+18. Saving and loading (S/L)
+19. graceful shutdown (ctrl-c and q)
