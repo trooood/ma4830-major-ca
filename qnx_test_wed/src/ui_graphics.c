@@ -462,7 +462,7 @@ void draw_wave_preview(const UIState *state)
 void draw_message_box(const UIState *state)
 {
     printf("Message : %s\n", state->last_message);
-    printf("Hint    : Replace demo values with your team's live shared variables.\n");
+    printf("Hint    : Replace demo values with live shared variables.\n");
     draw_hr(74);
 }
 
