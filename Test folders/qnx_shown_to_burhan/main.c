@@ -236,6 +236,7 @@ int main(int argc, char *argv[])
 {
     pthread_t wave_tid, disp_tid;
     setup_t *cfg, save, *loaded;
+    char input_buf[32];
     double input_val;
     const char *wnames[] = {"sine", "square", "tri", "saw", "arb"};
 
@@ -264,33 +265,35 @@ int main(int argc, char *argv[])
     #endif
  
     cfg = parse_command_line(argc, argv);
-    if (cfg->is_valid) {
+    if (cfg->is_valid && argc > 1) {
         state.wave_type = wave_type_from_string(cfg->waveform.waveform_type);
         state.frequency = cfg->waveform.frequency;
         state.amplitude = cfg->waveform.amplitude;
         state.offset = cfg->waveform.offset;
         strncpy(state.arb_file, cfg->waveform.arbitrary_file, 255);
         free_setup(cfg);
-    }
-    //New
-    printf("===========================================================================\n");
-    printf(" _   _ _   _ _     _   _____                   _             _\n");
-    printf("| \\ | | | | | |   | | |_   _|__ _ __ _ __ ___ (_)_ __   __ _| |_ ___  _ __\n");
-    printf("|  \\| | | | | |   | |   | |/ _ \\ '__| '_ ` _ \\| | '_ \\ / _` | __/ _ \\| '__|\n");
-    printf("| |\\  | |_| | |___| |___| |  __/ |  | | | | | | | | | | (_| | || (_) | |\n");
-    printf("|_| \\_|\\___/|_____|_____|_|\\___|_|  |_| |_| |_|_|_| |_|\\__,_|\\__\\___/|_|\n");
-    printf("                  NULL Terminators' Waveform Generator\n");
-    printf("===========================================================================\n");
-    printf("   1 - Sine    2 - Square    3 - Triangle    4 - Sawtooth    5 - Arbitrary\n");
-    printf("   Or press Enter for default (Sine)\n");
-    printf("===========================================================================\n");
-    {
-        int ch = getchar();
-        if (ch >= '1' && ch <= '5')
-            state.wave_type = ch - '1';
-            
-        /*Flush leftover newline to prevent phantom keypresses */
-        while ((ch = getchar()) != '\n' && ch != EOF);
+    } else {
+        
+        printf("===========================================================================\n");
+        printf(" _   _ _   _ _     _   _____                   _             _\n");
+        printf("| \\ | | | | | |   | | |_   _|__ _ __ _ __ ___ (_)_ __   __ _| |_ ___  _ __\n");
+        printf("|  \\| | | | | |   | |   | |/ _ \\ '__| '_ ` _ \\| | '_ \\ / _` | __/ _ \\| '__|\n");
+        printf("| |\\  | |_| | |___| |___| |  __/ |  | | | | | | | | | | (_| | || (_) | |\n");
+        printf("|_| \\_|\\___/|_____|_____|_|\\___|_|  |_| |_| |_|_|_| |_|\\__,_|\\__\\___/|_|\n");
+        printf("                  NULL Terminators' Waveform Generator\n");
+        printf("===========================================================================\n");
+        printf("   1 - Sine    2 - Square    3 - Triangle    4 - Sawtooth    5 - Arbitrary\n");
+        printf("   Or press Enter for default (Sine)\n");
+        printf("===========================================================================\n");
+        {
+            int ch = getchar();
+            if (ch >= '1' && ch <= '5')
+                state.wave_type = ch - '1';
+                
+            /*Flush leftover newline to prevent phantom keypresses */
+            while ((ch = getchar()) != '\n' && ch != EOF);
+        }
+        if (cfg) free_setup(cfg);
     }
     signal(SIGINT, on_sigint);
     if (hw_open(&dev) != 0) { printf("Hardware init failed.\n"); return 1; }
@@ -303,10 +306,10 @@ int main(int argc, char *argv[])
         char key;
         int up, down, left, right;
         #ifdef __QNX__
-        int switches, sw1, sw2, sw3, sw4;
+        int switches, sw1, sw2, sw3;
         unsigned short adc0, adc1_val;
         #else
-        int sw2 = 0, sw3 = 0, sw4 = 0;
+        int sw2 = 0, sw3 = 0;
         #endif
 
         key = 0; up = 0; down = 0; left = 0; right = 0;
@@ -317,11 +320,10 @@ int main(int argc, char *argv[])
         sw1 = (switches & 0x01) ? 1 : 0;
         sw2 = (switches & 0x02) ? 1 : 0;
         sw3 = (switches & 0x04) ? 1 : 0;
-        sw4 = (switches & 0x08) ? 1 : 0;
         
         /* 2. Update shared state for the wave thread */
         pthread_mutex_lock(&state.lock);
-        state.audio_enabled = sw4;
+        state.audio_enabled = (switches & 0x08) ? 1 : 0;
         pthread_mutex_unlock(&state.lock);
 
         /* 3. Print updated status bar including Audio (SW4) */

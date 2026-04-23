@@ -265,33 +265,35 @@ int main(int argc, char *argv[])
     #endif
  
     cfg = parse_command_line(argc, argv);
-    if (cfg->is_valid) {
+    if (cfg->is_valid && argc > 1) {
         state.wave_type = wave_type_from_string(cfg->waveform.waveform_type);
         state.frequency = cfg->waveform.frequency;
         state.amplitude = cfg->waveform.amplitude;
         state.offset = cfg->waveform.offset;
         strncpy(state.arb_file, cfg->waveform.arbitrary_file, 255);
         free_setup(cfg);
-    }
-    //New
-    printf("===========================================================================\n");
-    printf(" _   _ _   _ _     _   _____                   _             _\n");
-    printf("| \\ | | | | | |   | | |_   _|__ _ __ _ __ ___ (_)_ __   __ _| |_ ___  _ __\n");
-    printf("|  \\| | | | | |   | |   | |/ _ \\ '__| '_ ` _ \\| | '_ \\ / _` | __/ _ \\| '__|\n");
-    printf("| |\\  | |_| | |___| |___| |  __/ |  | | | | | | | | | | (_| | || (_) | |\n");
-    printf("|_| \\_|\\___/|_____|_____|_|\\___|_|  |_| |_| |_|_|_| |_|\\__,_|\\__\\___/|_|\n");
-    printf("                  NULL Terminators' Waveform Generator\n");
-    printf("===========================================================================\n");
-    printf("   1 - Sine    2 - Square    3 - Triangle    4 - Sawtooth    5 - Arbitrary\n");
-    printf("   Or press Enter for default (Sine)\n");
-    printf("===========================================================================\n");
-    {
-        int ch = getchar();
-        if (ch >= '1' && ch <= '5')
-            state.wave_type = ch - '1';
-            
-        /*Flush leftover newline to prevent phantom keypresses */
-        while ((ch = getchar()) != '\n' && ch != EOF);
+    } else {
+        
+        printf("===========================================================================\n");
+        printf(" _   _ _   _ _     _   _____                   _             _\n");
+        printf("| \\ | | | | | |   | | |_   _|__ _ __ _ __ ___ (_)_ __   __ _| |_ ___  _ __\n");
+        printf("|  \\| | | | | |   | |   | |/ _ \\ '__| '_ ` _ \\| | '_ \\ / _` | __/ _ \\| '__|\n");
+        printf("| |\\  | |_| | |___| |___| |  __/ |  | | | | | | | | | | (_| | || (_) | |\n");
+        printf("|_| \\_|\\___/|_____|_____|_|\\___|_|  |_| |_| |_|_|_| |_|\\__,_|\\__\\___/|_|\n");
+        printf("                  NULL Terminators' Waveform Generator\n");
+        printf("===========================================================================\n");
+        printf("   1 - Sine    2 - Square    3 - Triangle    4 - Sawtooth    5 - Arbitrary\n");
+        printf("   Or press Enter for default (Sine)\n");
+        printf("===========================================================================\n");
+        {
+            int ch = getchar();
+            if (ch >= '1' && ch <= '5')
+                state.wave_type = ch - '1';
+                
+            /*Flush leftover newline to prevent phantom keypresses */
+            while ((ch = getchar()) != '\n' && ch != EOF);
+        }
+        if (cfg) free_setup(cfg);
     }
     signal(SIGINT, on_sigint);
     if (hw_open(&dev) != 0) { printf("Hardware init failed.\n"); return 1; }
