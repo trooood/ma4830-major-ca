@@ -115,6 +115,7 @@ void generateSawtooth(unsigned int *wave_buffer, double amplitude, double offset
 int generateArbitrary(unsigned int *buf, const char *filename, double amplitude, double offset){    
     FILE *file;
     int i = 0;
+    int j, k;
     double val;
     int temp_raw[STEPS]; // Temporary signed array to safely hold fscanf data
 
@@ -134,7 +135,7 @@ int generateArbitrary(unsigned int *buf, const char *filename, double amplitude,
     int min_val = temp_raw[0];
     int max_val = temp_raw[0];
 
-    for (int j = 0; j < i; j++) {  // find max and min of file values
+    for (j = 0; j < i; j++) {  // find max and min of file values
         if (temp_raw[j] < min_val) {
             min_val = temp_raw[j];
         }
@@ -153,7 +154,7 @@ int generateArbitrary(unsigned int *buf, const char *filename, double amplitude,
     // if there are -ve numbers, push them to positive
     if (min_val < 0) {
         int pos_shift = -min_val;
-        for (int j = 0; j < i; j++) {
+        for (j = 0; j < i; j++) {
             temp_raw[j] += pos_shift;
         }
         
@@ -165,7 +166,7 @@ int generateArbitrary(unsigned int *buf, const char *filename, double amplitude,
     // }
 
     // rescale (amp)
-    for (int j = 0; j < i; j++) {
+    for (j = 0; j < i; j++) {
         wave_buffer[j] = (unsigned int)floorf(temp_raw[j] * mul_val);
     }
 
@@ -178,10 +179,10 @@ int generateArbitrary(unsigned int *buf, const char *filename, double amplitude,
     if (mul_time > 1) {  // samples need to be stretched
         unsigned int temp_buffer[STEPS];
 
-        for (int j = 0; j < arb_steps; j++) {  // move stuff into wave_buffer to temp_buffer
+        for (j = 0; j < arb_steps; j++) {  // move stuff into wave_buffer to temp_buffer
             temp_buffer[j] = wave_buffer[j];
         }
-        for (int j = 0; j < STEPS; j++) {  // clear wave_buffer
+        for (j = 0; j < STEPS; j++) {  // clear wave_buffer
             wave_buffer[j] = 0;
         }
 
@@ -191,8 +192,8 @@ int generateArbitrary(unsigned int *buf, const char *filename, double amplitude,
 
         // Repeat each sample mul_time times
         int index = 0;
-        for (int j = 0; j < arb_steps; j++) {
-            for (int k = 0; k < mul_time; k++) {
+        for (j = 0; j < arb_steps; j++) {
+            for (k = 0; k < mul_time; k++) {
                 wave_buffer[index++] = temp_buffer[j];
                 //printf("j = %d, k = %d", j, k);
             }
@@ -226,63 +227,4 @@ int generateArbitrary(unsigned int *buf, const char *filename, double amplitude,
     arbitrary_loaded = 1;
     return arb_steps;
 }
-
-// // ------------------------ Main Function ------------------------
-// int main(int argc, char *argv[]) {
-//     char *type = (argc > 1) ? argv[1] : "sine";
-    
-//     double amplitude = (argc > 2) ? atof(argv[2]) : 1.0; // default full scale
-//     double offset    = (argc > 3) ? atof(argv[3]) : 0.0; // default mid
-
-//     int valid = 1;
-
-//     if (strcmp(type, "sine") == 0) generateSine(wave_buffer, amplitude, offset);
-//     else if (strcmp(type, "square") == 0) generateSquare(wave_buffer, amplitude, offset);
-//     else if (strcmp(type, "tri") == 0) generateTriangular(wave_buffer, amplitude, offset);
-//     else if (strcmp(type, "saw") == 0) generateSawtooth(wave_buffer, amplitude, offset);
-//     else if (strcmp(type, "arb") == 0) {
-//         char *file = "wave.txt";  // default filename
-
-//         for (int i = 1; i < argc; i++) {
-//             if (strstr(argv[i], ".txt") != NULL) {
-//                 file = argv[i];
-//                 break;
-//             }
-//         }
-
-//         // for arb args, the argument index is now 3 and 4
-//         double amplitude = (argc > 3) ? atof(argv[3]) : 1.0; // default full scale
-//         double offset    = (argc > 4) ? atof(argv[4]) : 0.0; // default mid
-
-//         generateArbitrary(wave_buffer, file, amplitude, offset);
-//     }
-//     else {
-//         printf("Error: Unknown waveform '%s'. Program will exit.\n", type);
-//         valid = 0;
-//     }
-
-//     if (valid) {
-//         printf("Waveform '%s' initialized in buffer.\n", type);
-//         int delay_us = 1000;
-
-//         if (strcmp(type, "arb") == 0) {
-//             int cycle_length = (strcmp(type, "arb") == 0) ? arb_steps : STEPS;
-//             while (1) {
-//                 for (int i = 0; i < cycle_length; i++) {
-//                     printf("Output: %u\n", wave_buffer[i]);
-//                     usleep(delay_us);
-//                 }
-//             }
-//         }
-
-//         while (1) {
-//             for (int i = 0; i < STEPS; i++) {
-//                 printf("Output: %u\n", wave_buffer[i]);
-//                 usleep(delay_us);
-//             }
-//         }
-//     }
-
-//     return 0;
-// }
 

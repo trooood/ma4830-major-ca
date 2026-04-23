@@ -419,7 +419,7 @@ int main(int argc, char *argv[])
                 printf("\rSettings saved to settings.dat          ");
                 fflush(stdout);
             }
-            //New; deadlock bug
+            //New // deadlock bug
             else if (key == 'l') {
                 loaded = load_config_file("settings.dat");
                 if (loaded && loaded->is_valid) {

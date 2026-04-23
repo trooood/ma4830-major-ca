@@ -16,13 +16,13 @@ double safe_handling(const char *prompt, double min, double max, double default_
     while (!valid) {
         printf("%s", prompt);
         fflush(stdout);
+        len = strlen(buffer); 
         
         if (fgets(buffer, sizeof(buffer), stdin) == NULL) {
             printf("Input error. Using default: %.2f\n", default_val);
             return default_val;
         }
-        
-        len = strlen(buffer);        
+            
         if (len > 0 && buffer[len-1] == '\n') {
             buffer[len-1] = '\0';
         }
@@ -65,6 +65,7 @@ double safe_handling(const char *prompt, double min, double max, double default_
 void safe_get_waveform_type(setup_t *setup) {
     char buffer[32];
     int valid = 0;
+    int i;
     
     while (!valid) {
         printf("Enter waveform type (sine, square, tri, saw, arb): ");
@@ -82,7 +83,7 @@ void safe_get_waveform_type(setup_t *setup) {
         }
         
         // convert to lowercase
-        for (int i = 0; buffer[i]; i++) {
+        for (i = 0; buffer[i]; i++) {
             buffer[i] = tolower(buffer[i]);
         }
         
@@ -132,6 +133,7 @@ static void apply_defaults(setup_t *setup) {
 // command line input
 setup_t* parse_command_line(int argc, char *argv[]) {
     setup_t *setup = (setup_t*)malloc(sizeof(setup_t));
+    int i;
     if (!setup) return NULL;
     
     apply_defaults(setup); 
@@ -139,7 +141,7 @@ setup_t* parse_command_line(int argc, char *argv[]) {
     if (argc > 1) {
         char *type = argv[1];
         
-        for(int i = 0; type[i]; i++) {
+        for(i = 0; type[i]; i++) {
             type[i] = tolower(type[i]);
         }
         
