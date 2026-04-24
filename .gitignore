@@ -2,5 +2,7 @@
 sandbox/
 settings.dat
 *.py
+*.0
 \!*
 .DS_Store
+report_LaTeX
